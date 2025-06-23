@@ -2712,25 +2712,43 @@ menu_setting() {
 menu() {
   clear
   echo -e "======================================================================================================================\n"
-  info " $(text 17): $VERSION\n $(text 18): $(text 1)\n $(text 19):\n\t $(text 20): $SYS\n\t $(text 21): $(uname -r)\n\t $(text 22): $SING_BOX_ARCH\n\t $(text 23): $VIRT "
-  info "\t IPv4: $WAN4 $WARPSTATUS4 $COUNTRY4  $ASNORG4 "
-  info "\t IPv6: $WAN6 $WARPSTATUS6 $COUNTRY6  $ASNORG6 "
-info "$(cat <<EOF
-\t Sing-box: ${STATUS[0]}    $SING_BOX_VERSION      $SING_BOX_MEMORY_USAGE
-\t Argo:     ${STATUS[1]}    $ARGO_VERSION          $ARGO_MEMORY_USAGE
-\t Nginx:    ${STATUS[0]}    $NGINX_VERSION         $NGINX_MEMORY_USAGE
-EOF
-)"
-
+  
+  info "$(text 17): $VERSION"
+  info "$(text 18): $(text 1)"
+  info "$(text 19):"
+  info "    $(text 20): $SYS"
+  info "    $(text 21): $(uname -r)"
+  info "    $(text 22): $SING_BOX_ARCH"
+  info "    $(text 23): $VIRT"
+  
+  info "    IPv4: $WAN4 $WARPSTATUS4 $COUNTRY4  $ASNORG4"
+  info "    IPv6: $WAN6 $WARPSTATUS6 $COUNTRY6  $ASNORG6"
+  
+  info "    Sing-box: ${STATUS[0]}    $SING_BOX_VERSION    $SING_BOX_MEMORY_USAGE"
+  info "    Argo:     ${STATUS[1]}    $ARGO_VERSION        $ARGO_MEMORY_USAGE"
+  info "    Nginx:    ${STATUS[0]}    $NGINX_VERSION       $NGINX_MEMORY_USAGE"
+  
   echo -e "\n======================================================================================================================\n"
-  for ((b=1;b<=${#OPTION[*]};b++)); do [ "$b" = "${#OPTION[*]}" ] && hint " ${OPTION[0]} " || hint " ${OPTION[b]} "; done
+  
+  for ((b=1; b<=${#OPTION[*]}; b++)); do
+    if [ "$b" = "${#OPTION[*]}" ]; then
+      hint " ${OPTION[0]} "
+    else
+      hint " ${OPTION[b]} "
+    fi
+  done
+
   reading "\n $(text 24) " CHOOSE
+
   if grep -qE "^[0-9]{1,2}$" <<< "$CHOOSE" && [ "$CHOOSE" -lt "${#OPTION[*]}" ]; then
-    ACTION[$CHOOSE]
+    ${ACTION[$CHOOSE]}
   else
-    warning " $(text 36) [0-$((${#OPTION[*]}-1))] " && sleep 1 && menu
+    warning " $(text 36) [0-$((${#OPTION[*]}-1))] "
+    sleep 1
+    menu
   fi
 }
+
 check_cdn
 statistics_of_run-times update sing-box.sh
 [[ "${*^^}" =~ '-E' ]] && L=E
