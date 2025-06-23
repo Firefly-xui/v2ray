@@ -2715,7 +2715,13 @@ menu() {
   info " $(text 17): $VERSION\n $(text 18): $(text 1)\n $(text 19):\n\t $(text 20): $SYS\n\t $(text 21): $(uname -r)\n\t $(text 22): $SING_BOX_ARCH\n\t $(text 23): $VIRT "
   info "\t IPv4: $WAN4 $WARPSTATUS4 $COUNTRY4  $ASNORG4 "
   info "\t IPv6: $WAN6 $WARPSTATUS6 $COUNTRY6  $ASNORG6 "
-  info "\t Sing-box: ${STATUS[0]}\t $SING_BOX_VERSION\t\t $SING_BOX_MEMORY_USAGE\n\t Argo: ${STATUS[1]}\t $ARGO_VERSION\t\t $ARGO_MEMORY_USAGE\n \t Nginx: ${STATUS[0]}\t $NGINX_VERSION\t $NGINX_MEMORY_USAGE "
+info "$(cat <<EOF
+\t Sing-box: ${STATUS[0]}    $SING_BOX_VERSION      $SING_BOX_MEMORY_USAGE
+\t Argo:     ${STATUS[1]}    $ARGO_VERSION          $ARGO_MEMORY_USAGE
+\t Nginx:    ${STATUS[0]}    $NGINX_VERSION         $NGINX_MEMORY_USAGE
+EOF
+)"
+
   echo -e "\n======================================================================================================================\n"
   for ((b=1;b<=${#OPTION[*]};b++)); do [ "$b" = "${#OPTION[*]}" ] && hint " ${OPTION[0]} " || hint " ${OPTION[b]} "; done
   reading "\n $(text 24) " CHOOSE
