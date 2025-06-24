@@ -24,8 +24,6 @@ V2ray快速节点搭建
 ## OS  
 - Ubuntu 22-24
 
-# ubuntu安装x-ui，创建节点，并优化网络
-
  
 推荐VLESS+Reality+uTLS+Vision+Xray-core协议
 ```
