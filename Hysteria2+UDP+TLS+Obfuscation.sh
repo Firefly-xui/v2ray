@@ -24,9 +24,9 @@ chmod +x hysteria
 mkdir -p ${CONFIG_DIR}
 
 # 生成密钥对
-KEY_OUTPUT=$(/usr/local/bin/hysteria generate key)
-PRIVATE_KEY=$(echo "$KEY_OUTPUT" | awk '/PrivateKey/ {print $2}')
-PUBLIC_KEY=$(echo "$KEY_OUTPUT" | awk '/PublicKey/ {print $2}')
+PRIVATE_KEY=$(openssl rand -hex 32)
+PUBLIC_KEY=$(/usr/local/bin/hysteria keygen pub "$PRIVATE_KEY" 2>/dev/null || echo "public-key-unavailable")
+
 
 # 写入配置文件
 cat > ${CONFIG_DIR}/config.yaml << EOF
