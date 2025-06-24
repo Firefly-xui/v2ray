@@ -2,7 +2,7 @@
 
 set -e
 
-# 配置默认值
+# ========== 基本配置 ==========
 CORE="xray"
 PROTOCOL="vless"
 DOMAIN="www.nvidia.com"
@@ -10,17 +10,20 @@ UUID=$(cat /proc/sys/kernel/random/uuid)
 USER=$(openssl rand -hex 4)
 VISION_SHORT_ID=$(openssl rand -hex 4)
 PORT=$((RANDOM % 7001 + 2000))
+XRAY_BIN="/usr/local/bin/xray"
 
-# 安装必要依赖
+echo -e "\n📦 开始自动部署 Xray VLESS Reality 节点...\n"
+
+# ========== 安装依赖 ==========
 export DEBIAN_FRONTEND=noninteractive
 apt update
 apt install -y curl unzip ufw jq qrencode
 
-# 设置防火墙并开放端口
+# ========== 开启防火墙并放行端口 ==========
 ufw allow ${PORT}/tcp
 ufw --force enable
 
-# 下载并安装 Xray-core 最新版本
+# ========== 安装 Xray-core ==========
 mkdir -p /usr/local/bin
 cd /usr/local/bin
 curl -L https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip -o xray.zip
@@ -28,18 +31,16 @@ unzip -o xray.zip
 chmod +x xray
 rm -f xray.zip
 
-# 生成 Reality 密钥对
-REALITY_KEYS=$(/usr/local/bin/xray x25519)
+# ========== 生成 Reality 密钥 ==========
+REALITY_KEYS=$(${XRAY_BIN} x25519)
 REALITY_PRIVATE_KEY=$(echo "${REALITY_KEYS}" | grep "Private key" | awk '{print $3}')
 REALITY_PUBLIC_KEY=$(echo "${REALITY_KEYS}" | grep "Public key" | awk '{print $3}')
 
-# 写入配置文件
+# ========== 生成 Xray 配置文件 ==========
 mkdir -p /etc/xray
 cat > /etc/xray/config.json << EOF
 {
-  "log": {
-    "loglevel": "warning"
-  },
+  "log": { "loglevel": "warning" },
   "inbounds": [{
     "port": ${PORT},
     "protocol": "${PROTOCOL}",
@@ -64,20 +65,18 @@ cat > /etc/xray/config.json << EOF
       }
     }
   }],
-  "outbounds": [{
-    "protocol": "freedom"
-  }]
+  "outbounds": [{ "protocol": "freedom" }]
 }
 EOF
 
-# 配置 systemd 服务
+# ========== 写入 systemd 服务 ==========
 cat > /etc/systemd/system/xray.service << EOF
 [Unit]
 Description=Xray Service
 After=network.target
 
 [Service]
-ExecStart=/usr/local/bin/xray -config /etc/xray/config.json
+ExecStart=${XRAY_BIN} -config /etc/xray/config.json
 Restart=on-failure
 
 [Install]
@@ -89,15 +88,34 @@ systemctl daemon-reload
 systemctl enable xray
 systemctl restart xray
 
-# 获取本机公网 IP
+# ========== 设置默认 FQ 调度器 ==========
+modprobe sch_fq || true
+if ! grep -q "fq" /sys/class/net/*/queues/tx-0/queue_disc; then
+  echo "fq 已启用或将启用..."
+  echo 'net.core.default_qdisc=fq' >> /etc/sysctl.conf
+  sysctl -w net.core.default_qdisc=fq
+fi
+
+# ========== 启用 BBR 拥塞控制 ==========
+if ! sysctl net.ipv4.tcp_congestion_control | grep -q "bbr"; then
+  echo 'net.ipv4.tcp_congestion_control=bbr' >> /etc/sysctl.conf
+  echo 'net.ipv4.tcp_fastopen=3' >> /etc/sysctl.conf
+  sysctl -w net.ipv4.tcp_congestion_control=bbr
+  sysctl -w net.ipv4.tcp_fastopen=3
+fi
+
+modprobe tcp_bbr || true
+sysctl -p
+
+# ========== 获取公网 IP ==========
 NODE_IP=$(curl -s https://api.ipify.org)
 
-# 生成 VLESS Reality 节点链接
+# ========== 构造 VLESS Reality 节点链接 ==========
 VLESS_LINK="vless://${UUID}@${NODE_IP}:${PORT}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${DOMAIN}&fp=chrome&pbk=${REALITY_PUBLIC_KEY}&sid=${VISION_SHORT_ID}&type=tcp#${USER}"
 
-# 输出信息与二维码（中文）
-echo -e "\n\033[1;32m🎉 VLESS Reality 节点已成功搭建！以下是您的配置信息：\033[0m\n"
-echo -e "🔗 节点链接（支持 v2rayN / v2box 直接导入）：\n${VLESS_LINK}\n"
-echo -e "📱 节点二维码（终端扫码）："
+# ========== 输出结果 ==========
+echo -e "\n\033[1;32m✅ VLESS Reality 节点部署完成！\033[0m\n"
+echo -e "🔗 节点链接（可直接导入）：\n${VLESS_LINK}\n"
+echo -e "📱 二维码（支持 v2rayN / v2box 扫码导入）："
 echo "${VLESS_LINK}" | qrencode -o - -t ANSIUTF8
 echo ""
