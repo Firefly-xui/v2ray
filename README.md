@@ -133,7 +133,9 @@ bash <(curl -Ls https://raw.githubusercontent.com/Firefly-xui/v2ray/master/QUIC+
 
 
 
-协议组合	                        抗封锁	    延迟	    稳定性	    部署复杂度	  适用建议
-VLESS + Reality + uTLS + Vision	  ★★★★☆	★★★☆☆	★★★★☆	★★☆☆☆	推荐主力入口
-Hysteria2 + UDP + TLS + Obfs	    ★★★★☆	★★★★★	★★★☆☆	★★☆☆☆	流媒体/备用
-QUIC + UDP + CDN + TLS + Fallback	★★★★★	★★★★☆	★★★★★	★★★★☆	高防后门通道
+| 协议组合                            | 抗封锁  | 延迟   | 稳定性 | 部署复杂度 | 适用建议       |
+|-------------------------------------|--------|--------|--------|-------------|----------------|
+| VLESS + Reality + uTLS + Vision     | ★★★★☆ | ★★★☆☆ | ★★★★☆ | ★★☆☆☆      | 推荐主力入口   |
+| Hysteria2 + UDP + TLS + Obfs        | ★★★★☆ | ★★★★★ | ★★★☆☆ | ★★☆☆☆      | 流媒体 / 备用  |
+| QUIC + UDP + CDN + TLS + Fallback   | ★★★★★ | ★★★★☆ | ★★★★★ | ★★★★☆      | 高防后门通道   |
+
