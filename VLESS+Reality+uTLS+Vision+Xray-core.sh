@@ -2,26 +2,25 @@
 
 set -e
 
-# 默认参数
+# 配置默认值
 CORE="xray"
 PROTOCOL="vless"
 DOMAIN="www.nvidia.com"
-PORT=2000
 UUID=$(cat /proc/sys/kernel/random/uuid)
 USER=$(openssl rand -hex 4)
-REALITY_PUBLIC_KEY=""
-REALITY_PRIVATE_KEY=""
 VISION_SHORT_ID=$(openssl rand -hex 4)
+PORT=$((RANDOM % 7001 + 2000))
 
-# 安装依赖
+# 安装必要依赖
 export DEBIAN_FRONTEND=noninteractive
-apt update && apt install -y curl unzip ufw jq
+apt update
+apt install -y curl unzip ufw jq qrencode
 
-# 防火墙配置
+# 设置防火墙并开放端口
 ufw allow ${PORT}/tcp
 ufw --force enable
 
-# 安装 sing-box 或 xray-core
+# 下载并安装 Xray-core 最新版本
 mkdir -p /usr/local/bin
 cd /usr/local/bin
 curl -L https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip -o xray.zip
@@ -30,11 +29,11 @@ chmod +x xray
 rm -f xray.zip
 
 # 生成 Reality 密钥对
-REALITY_KEY=$(./xray x25519)
-REALITY_PRIVATE_KEY=$(echo "$REALITY_KEY" | grep "Private key:" | awk '{print $3}')
-REALITY_PUBLIC_KEY=$(echo "$REALITY_KEY" | grep "Public key:" | awk '{print $3}')
+REALITY_KEYS=$(/usr/local/bin/xray x25519)
+REALITY_PRIVATE_KEY=$(echo "${REALITY_KEYS}" | grep "Private key" | awk '{print $3}')
+REALITY_PUBLIC_KEY=$(echo "${REALITY_KEYS}" | grep "Public key" | awk '{print $3}')
 
-# 生成配置文件
+# 写入配置文件
 mkdir -p /etc/xray
 cat > /etc/xray/config.json << EOF
 {
@@ -71,7 +70,7 @@ cat > /etc/xray/config.json << EOF
 }
 EOF
 
-# 启动服务
+# 配置 systemd 服务
 cat > /etc/systemd/system/xray.service << EOF
 [Unit]
 Description=Xray Service
@@ -90,33 +89,15 @@ systemctl daemon-reload
 systemctl enable xray
 systemctl restart xray
 
-# 输出节点信息
-echo ""
-echo "🎉 已成功搭建 VLESS + Reality + uTLS + Vision 节点！以下是你的配置信息："
-echo ""
-echo "地址：$(curl -s https://api.ipify.org)"
-echo "端口：${PORT}"
-echo "UUID：${UUID}"
-echo "用户名（email）：${USER}"
-echo "伪装域名：${DOMAIN}"
-echo "Reality 公钥：${REALITY_PUBLIC_KEY}"
-echo "短 ID：${VISION_SHORT_ID}"
-echo "传输协议：tcp + reality"
-echo "flow：xtls-rprx-vision"
-echo ""
-echo "✅ 请将上述信息导入支持 Reality 的客户端使用"
-
-# 生成 vless 节点 URI
+# 获取本机公网 IP
 NODE_IP=$(curl -s https://api.ipify.org)
+
+# 生成 VLESS Reality 节点链接
 VLESS_LINK="vless://${UUID}@${NODE_IP}:${PORT}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${DOMAIN}&fp=chrome&pbk=${REALITY_PUBLIC_KEY}&sid=${VISION_SHORT_ID}&type=tcp#${USER}"
 
-# 输出链接和二维码
+# 输出信息与二维码（中文）
+echo -e "\n\033[1;32m🎉 VLESS Reality 节点已成功搭建！以下是您的配置信息：\033[0m\n"
+echo -e "🔗 节点链接（支持 v2rayN / v2box 直接导入）：\n${VLESS_LINK}\n"
+echo -e "📱 节点二维码（终端扫码）："
+echo "${VLESS_LINK}" | qrencode -o - -t ANSIUTF8
 echo ""
-echo "✅ 可直接导入的 VLESS Reality 节点链接："
-echo "$VLESS_LINK"
-echo ""
-echo "📱 二维码（使用 v2rayN / v2box 扫码导入）："
-command -v qrencode >/dev/null 2>&1 || apt install -y qrencode
-echo "$VLESS_LINK" | qrencode -o - -t ANSIUTF8
-
-
