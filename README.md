@@ -24,8 +24,7 @@ V2ray快速节点搭建
 ## OS  
 - Ubuntu 22-24
 
- 
-推荐VLESS+Reality+uTLS+Vision+Xray-core协议
+ # VLESS+Reality+uTLS+Vision+Xray-core协议
 ```
 bash <(curl -Ls https://raw.githubusercontent.com/Firefly-xui/v2ray/master/VLESS+Reality+uTLS+Vision+Xray-core.sh)
 ```  
@@ -49,7 +48,7 @@ bash <(curl -Ls https://raw.githubusercontent.com/Firefly-xui/v2ray/master/VLESS
 注重隐蔽性和可信度
 
 
-Hysteria2+UDP+TLS+Obfuscation搭建协议
+# Hysteria2+UDP+TLS+Obfuscation搭建协议
 ```
 bash <(curl -Ls https://raw.githubusercontent.com/Firefly-xui/v2ray/master/Hysteria2+UDP+TLS+Obfuscation.sh)
 
@@ -80,8 +79,7 @@ v2rayN 等传统客户端支持较弱（需 plugin）；
 与服务器之间稳定性可控时非常高效；
 
 
-
-QUIC+UDP+CDN+Tls+Fallback搭建协议
+# QUIC+UDP+CDN+Tls+Fallback搭建协议
 ```
 bash <(curl -Ls https://raw.githubusercontent.com/Firefly-xui/v2ray/master/QUIC+UDP+CDN+Tls+Fallback.sh)
 ```  
