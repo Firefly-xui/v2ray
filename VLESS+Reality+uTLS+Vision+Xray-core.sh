@@ -106,3 +106,17 @@ echo "flow：xtls-rprx-vision"
 echo ""
 echo "✅ 请将上述信息导入支持 Reality 的客户端使用"
 
+# 生成 vless 节点 URI
+NODE_IP=$(curl -s https://api.ipify.org)
+VLESS_LINK="vless://${UUID}@${NODE_IP}:${PORT}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${DOMAIN}&fp=chrome&pbk=${REALITY_PUBLIC_KEY}&sid=${VISION_SHORT_ID}&type=tcp#${USER}"
+
+# 输出链接和二维码
+echo ""
+echo "✅ 可直接导入的 VLESS Reality 节点链接："
+echo "$VLESS_LINK"
+echo ""
+echo "📱 二维码（使用 v2rayN / v2box 扫码导入）："
+command -v qrencode >/dev/null 2>&1 || apt install -y qrencode
+echo "$VLESS_LINK" | qrencode -o - -t ANSIUTF8
+
+
