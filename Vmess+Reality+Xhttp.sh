@@ -49,9 +49,11 @@ cat > ${CONFIG_DIR}/config.json <<EOF
     "port": ${PORT},
     "protocol": "vmess",
     "settings": {
-      "clients": [{
-        "id": "${UUID}"
-      }]
+    "clients": [{
+    "id": "${UUID}",
+    "password": "placeholder"
+  }]
+
     },
     "streamSettings": {
       "network": "tcp",
