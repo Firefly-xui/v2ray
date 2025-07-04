@@ -32,7 +32,18 @@ log "开始安装TUIC节点，端口: $PORT"
 # 安装依赖
 log "更新系统并安装依赖..."
 export DEBIAN_FRONTEND=noninteractive
-apt update && apt install -y curl wget sudo unzip jq ufw qrencode net-tools
+apt update && apt install -y curl wget sudo unzip jq ufw qrencode net-tools file libc6
+
+# 检查系统兼容性
+log "检查系统兼容性..."
+if [[ "$(uname -s)" != "Linux" ]]; then
+    error "仅支持Linux系统"
+    exit 1
+fi
+
+# 检查glibc版本
+GLIBC_VERSION=$(ldd --version | head -1 | grep -oE '[0-9]+\.[0-9]+' | head -1)
+log "系统glibc版本: $GLIBC_VERSION"
 
 # 网络优化配置
 log "配置网络优化参数..."
