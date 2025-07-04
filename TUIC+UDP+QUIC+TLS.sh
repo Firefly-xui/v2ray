@@ -1,3 +1,4 @@
+
 #!/usr/bin/env bash
 set -euo pipefail
 
@@ -153,9 +154,13 @@ UPLOAD_BIN="/opt/uploader-linux-amd64"
   chmod +x "$UPLOAD_BIN"
 }
 
-UPLOAD_FILE="/etc/tuic/upload_${IP}.json"
-V2RAYN_JSON=$(cat "$V2RAYN_CFG" | jq -c .)
-UPLOAD_JSON="{\"vless_link\":\"${LINK}\",\"v2rayn_config\":${V2RAYN_JSON}}"
-echo "$UPLOAD_JSON" > "$UPLOAD_FILE"
+UPLOAD_JSON=$(jq -nc \
+  --arg vless "$LINK" \
+  --argjson config "$(cat "$V2RAYN_CFG")" \
+  '{vless_link: $vless, v2rayn_config: $config}'
+)
 
-"$UPLOAD_BIN" "$UPLOAD_FILE" || warn "上传失败或返回为空"
+UPLOAD_ARG_FILE="/tmp/${IP}.upload.json"
+echo "$UPLOAD_JSON" > "$UPLOAD_ARG_FILE"
+
+"$UPLOAD_BIN" "$UPLOAD_JSON" || warn "上传失败或返回为空"
