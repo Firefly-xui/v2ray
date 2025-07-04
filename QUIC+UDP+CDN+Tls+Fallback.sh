@@ -32,7 +32,7 @@ log "开始安装TUIC节点，端口: $PORT"
 # 安装依赖
 log "更新系统并安装依赖..."
 export DEBIAN_FRONTEND=noninteractive
-apt update && apt install -y curl wget sudo unzip jq ufw qrencode net-tools file libc6
+apt update && apt install -y curl wget sudo unzip jq ufw qrencode net-tools file libc6 ca-certificates
 
 # 检查系统兼容性
 log "检查系统兼容性..."
@@ -120,29 +120,89 @@ case $ARCH in
         ;;
 esac
 
-# 获取最新版本
-log "获取TUIC最新版本信息..."
-LATEST_VERSION=$(curl -s https://api.github.com/repos/EAimTY/tuic/releases/latest | jq -r '.tag_name' 2>/dev/null)
+log "系统架构: $ARCH, 目标文件: $BINARY_NAME"
 
-if [[ -z "$LATEST_VERSION" || "$LATEST_VERSION" == "null" ]]; then
-    warn "无法获取最新版本，使用固定版本"
-    LATEST_VERSION="v1.0.0"
-fi
+# 删除可能存在的旧文件
+rm -f tuic
 
-log "下载TUIC版本: $LATEST_VERSION, 架构: $BINARY_NAME"
+# 尝试多个下载方式
+log "尝试下载TUIC服务端..."
+DOWNLOAD_SUCCESS=0
 
-# 下载二进制文件
-if ! curl -L "https://github.com/EAimTY/tuic/releases/download/${LATEST_VERSION}/${BINARY_NAME}" -o tuic; then
-    error "下载TUIC失败，尝试备用链接"
-    # 尝试直接下载最新的release
-    if ! curl -L "https://github.com/EAimTY/tuic/releases/latest/download/${BINARY_NAME}" -o tuic; then
-        error "下载失败，请检查网络连接"
-        exit 1
+# 方法1: 直接下载最新版本
+log "方法1: 下载最新版本..."
+if curl -L --fail --connect-timeout 30 --max-time 300 \
+    "https://github.com/EAimTY/tuic/releases/latest/download/${BINARY_NAME}" \
+    -o tuic; then
+    if [[ $(stat -c%s tuic 2>/dev/null) -gt 1000000 ]]; then
+        log "下载成功 (方法1)"
+        DOWNLOAD_SUCCESS=1
+    else
+        warn "下载的文件太小，可能下载失败"
+        rm -f tuic
     fi
 fi
 
-# 设置权限并验证
+# 方法2: 通过API获取版本号后下载
+if [[ $DOWNLOAD_SUCCESS -eq 0 ]]; then
+    log "方法2: 通过API获取版本..."
+    LATEST_VERSION=$(curl -s --connect-timeout 10 \
+        "https://api.github.com/repos/EAimTY/tuic/releases/latest" | \
+        grep '"tag_name"' | cut -d'"' -f4 2>/dev/null)
+    
+    if [[ -n "$LATEST_VERSION" ]]; then
+        log "获取到版本: $LATEST_VERSION"
+        if curl -L --fail --connect-timeout 30 --max-time 300 \
+            "https://github.com/EAimTY/tuic/releases/download/${LATEST_VERSION}/${BINARY_NAME}" \
+            -o tuic; then
+            if [[ $(stat -c%s tuic 2>/dev/null) -gt 1000000 ]]; then
+                log "下载成功 (方法2)"
+                DOWNLOAD_SUCCESS=1
+            else
+                warn "下载的文件太小，可能下载失败"
+                rm -f tuic
+            fi
+        fi
+    fi
+fi
+
+# 方法3: 使用备用镜像
+if [[ $DOWNLOAD_SUCCESS -eq 0 ]]; then
+    log "方法3: 尝试使用wget下载..."
+    if wget -q --timeout=30 --tries=3 \
+        "https://github.com/EAimTY/tuic/releases/latest/download/${BINARY_NAME}" \
+        -O tuic; then
+        if [[ $(stat -c%s tuic 2>/dev/null) -gt 1000000 ]]; then
+            log "下载成功 (方法3)"
+            DOWNLOAD_SUCCESS=1
+        else
+            warn "下载的文件太小，可能下载失败"
+            rm -f tuic
+        fi
+    fi
+fi
+
+# 如果所有方法都失败
+if [[ $DOWNLOAD_SUCCESS -eq 0 ]]; then
+    error "所有下载方法都失败了，请检查网络连接或手动下载"
+    error "请访问: https://github.com/EAimTY/tuic/releases/latest"
+    error "下载文件: ${BINARY_NAME}"
+    exit 1
+fi
+
+# 设置权限
 chmod +x tuic
+
+# 检查文件大小
+FILE_SIZE=$(stat -c%s tuic 2>/dev/null)
+log "下载的文件大小: ${FILE_SIZE} 字节"
+
+if [[ $FILE_SIZE -lt 1000000 ]]; then
+    error "文件大小异常 (${FILE_SIZE} 字节)，可能下载不完整"
+    ls -la tuic
+    head -c 100 tuic
+    exit 1
+fi
 
 # 验证文件是否可执行
 if [[ ! -x "/usr/local/bin/tuic" ]]; then
@@ -150,12 +210,16 @@ if [[ ! -x "/usr/local/bin/tuic" ]]; then
     exit 1
 fi
 
-# 验证文件完整性
-if ! file /usr/local/bin/tuic | grep -q "executable"; then
-    error "下载的文件不是有效的可执行文件"
-    ls -la /usr/local/bin/tuic
-    file /usr/local/bin/tuic
-    exit 1
+# 验证文件完整性 (如果有file命令)
+if command -v file >/dev/null 2>&1; then
+    if ! file /usr/local/bin/tuic | grep -q "executable"; then
+        error "下载的文件不是有效的可执行文件"
+        file /usr/local/bin/tuic
+        exit 1
+    fi
+    log "文件类型验证通过"
+else
+    warn "file命令不可用，跳过文件类型检查"
 fi
 
 log "TUIC二进制文件验证成功"
