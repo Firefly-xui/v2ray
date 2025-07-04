@@ -82,7 +82,6 @@ net.core.default_qdisc=fq_codel
 EOF
 
 sysctl -p
-
 log "确保SSH端口未被阻断..."
 SSH_PORT=22
 
@@ -105,12 +104,60 @@ log "下载并安装TUIC服务端..."
 mkdir -p /usr/local/bin
 cd /usr/local/bin
 
-# 获取最新版本
-LATEST_VERSION=$(curl -s https://api.github.com/repos/EAimTY/tuic/releases/latest | jq -r '.tag_name')
-log "下载TUIC版本: $LATEST_VERSION"
+# 检查系统架构
+ARCH=$(uname -m)
+case $ARCH in
+    x86_64)
+        BINARY_NAME="tuic-server-linux-amd64"
+        ;;
+    aarch64)
+        BINARY_NAME="tuic-server-linux-arm64"
+        ;;
+    *)
+        error "不支持的系统架构: $ARCH"
+        exit 1
+        ;;
+esac
 
-curl -L "https://github.com/EAimTY/tuic/releases/download/${LATEST_VERSION}/tuic-server-linux-amd64" -o tuic
+# 获取最新版本
+log "获取TUIC最新版本信息..."
+LATEST_VERSION=$(curl -s https://api.github.com/repos/EAimTY/tuic/releases/latest | jq -r '.tag_name' 2>/dev/null)
+
+if [[ -z "$LATEST_VERSION" || "$LATEST_VERSION" == "null" ]]; then
+    warn "无法获取最新版本，使用固定版本"
+    LATEST_VERSION="v1.0.0"
+fi
+
+log "下载TUIC版本: $LATEST_VERSION, 架构: $BINARY_NAME"
+
+# 下载二进制文件
+if ! curl -L "https://github.com/EAimTY/tuic/releases/download/${LATEST_VERSION}/${BINARY_NAME}" -o tuic; then
+    error "下载TUIC失败，尝试备用链接"
+    # 尝试直接下载最新的release
+    if ! curl -L "https://github.com/EAimTY/tuic/releases/latest/download/${BINARY_NAME}" -o tuic; then
+        error "下载失败，请检查网络连接"
+        exit 1
+    fi
+fi
+
+# 设置权限并验证
 chmod +x tuic
+
+# 验证文件是否可执行
+if [[ ! -x "/usr/local/bin/tuic" ]]; then
+    error "TUIC二进制文件不可执行"
+    exit 1
+fi
+
+# 验证文件完整性
+if ! file /usr/local/bin/tuic | grep -q "executable"; then
+    error "下载的文件不是有效的可执行文件"
+    ls -la /usr/local/bin/tuic
+    file /usr/local/bin/tuic
+    exit 1
+fi
+
+log "TUIC二进制文件验证成功"
 
 # 创建目录
 mkdir -p $CONFIG_DIR/tls
