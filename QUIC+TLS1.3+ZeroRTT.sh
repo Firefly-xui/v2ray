@@ -1,78 +1,73 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
+set -euo pipefail
 
-# 彩色日志
-GREEN="\033[0;32m"
-RED="\033[0;31m"
-NC="\033[0m"
+# ---------- 彩色日志 ----------
+GREEN="\033[0;32m"; RED="\033[0;31m"; YELLOW="\033[1;33m"; NC="\033[0m"
+log(){  echo -e "${GREEN}[INFO ]${NC} $*"; }
+warn(){ echo -e "${YELLOW}[WARN ]${NC} $*"; }
+err(){  echo -e "${RED}[ERROR]${NC} $*" ; exit 1; }
 
-log() { echo -e "${GREEN}[INFO]${NC} $1"; }
-err() { echo -e "${RED}[ERROR]${NC} $1"; }
-
-# 自动参数
+# ---------- 自动生成参数 ----------
 UUID=$(cat /proc/sys/kernel/random/uuid)
 PSK=$(openssl rand -hex 16)
-PORT=$((RANDOM % 1000 + 30000))
-SERVER_NAME="www.nvidia.com"
-CONFIG_DIR="/etc/tuic"
-BIN_PATH="/usr/local/bin/tuic"
-ARCH=$(uname -m)
-UPLOAD_BIN="/opt/uploader-linux-amd64"
+PORT=$((RANDOM%1000+30000))
+SERVER_NAME="www.bing.com"
+CFG_DIR="/etc/tuic"; TLS_DIR="$CFG_DIR/tls"
+BIN_DIR="/usr/local/bin"; BIN_LINK="$BIN_DIR/tuic"
 
-# 判断架构
-case "$ARCH" in
-  x86_64) TUIC_BIN="tuic-server-x86_64-unknown-linux-gnu" ;;
-  aarch64) TUIC_BIN="tuic-server-aarch64-unknown-linux-gnu" ;;
-  *) err "不支持的架构: $ARCH" && exit 1 ;;
+# ---------- 环境依赖 ----------
+log "安装依赖..."
+apt update -y
+apt install -y curl wget jq qrencode ufw openssl net-tools
+
+# ---------- 获取架构 ----------
+case "$(uname -m)" in
+  x86_64)  ARCH_TAIL="x86_64-unknown-linux-gnu"  ;;
+  aarch64) ARCH_TAIL="aarch64-unknown-linux-gnu" ;;
+  *) err "暂不支持的架构: $(uname -m)" ;;
 esac
 
-log "安装依赖..."
-apt update
-apt install -y curl wget unzip jq qrencode sudo net-tools ufw openssl
+# ---------- 获取最新版本 ----------
+TAG_JSON=$(curl -s https://api.github.com/repos/EAimTY/tuic/releases/latest)
+TAG_NAME=$(echo "$TAG_JSON" | jq -r '.tag_name')             # 如 tuic-server-1.0.0
+VERSION=${TAG_NAME#tuic-server-}                             # 1.0.0
+BIN_NAME="tuic-server-${VERSION}-${ARCH_TAIL}"               # 完整资产文件名
 
-log "创建目录: $CONFIG_DIR"
-mkdir -p "$CONFIG_DIR/tls"
+log "最新版本: ${VERSION}"
+log "目标文件: ${BIN_NAME}"
 
-log "下载 TUIC v5 二进制..."
-cd /usr/local/bin
-rm -f tuic
-curl -Lo tuic "https://github.com/EAimTY/tuic/releases/latest/download/${TUIC_BIN}"
-chmod +x tuic
+# ---------- 下载并校验 ----------
+cd "$BIN_DIR"; rm -f tuic "$BIN_NAME" "${BIN_NAME}.sha256sum"
 
-log "验证 TUIC 是否可执行..."
-if ! ./tuic --version >/dev/null 2>&1; then
-  err "下载失败或二进制无效"
-  exit 1
-fi
+URL_BASE="https://github.com/EAimTY/tuic/releases/download/${TAG_NAME}"
+curl -L --fail -o "$BIN_NAME"        "$URL_BASE/$BIN_NAME"
+curl -L --fail -o "${BIN_NAME}.sha256sum" "$URL_BASE/${BIN_NAME}.sha256sum"
 
-log "生成自签名证书..."
+sha256sum -c "${BIN_NAME}.sha256sum" || err "SHA256 校验失败"
+chmod +x "$BIN_NAME"
+ln -sf "$BIN_DIR/$BIN_NAME" "$BIN_LINK"
+
+# ---------- 生成 TLS 证书 ----------
+log "生成自签证书..."
+mkdir -p "$TLS_DIR"
 openssl req -x509 -newkey rsa:4096 -sha256 -days 365 -nodes \
-  -keyout "$CONFIG_DIR/tls/key.key" \
-  -out "$CONFIG_DIR/tls/cert.crt" \
+  -keyout "$TLS_DIR/key.key" -out "$TLS_DIR/cert.crt" \
   -subj "/C=US/ST=CA/L=SanFrancisco/O=bing/CN=${SERVER_NAME}" \
   -addext "subjectAltName=DNS:${SERVER_NAME}"
 
-chmod 600 "$CONFIG_DIR/tls/key.key"
-chmod 644 "$CONFIG_DIR/tls/cert.crt"
-
-log "生成 TUIC 配置文件..."
-cat > "$CONFIG_DIR/config.json" <<EOF
+# ---------- TUIC 配置 ----------
+log "写入 tuic 配置..."
+mkdir -p "$CFG_DIR"
+cat > "$CFG_DIR/config.json" <<EOF
 {
   "server": "0.0.0.0",
   "server_port": $PORT,
-  "users": {
-    "$UUID": "$PSK"
-  },
-  "certificate": "$CONFIG_DIR/tls/cert.crt",
-  "private_key": "$CONFIG_DIR/tls/key.key",
+  "users": { "$UUID": "$PSK" },
+  "certificate": "$TLS_DIR/cert.crt",
+  "private_key": "$TLS_DIR/key.key",
   "congestion_control": "bbr",
   "alpn": ["h3"],
-  "udp_relay_ipv6": false,
   "zero_rtt_handshake": true,
-  "auth_timeout": "5s",
-  "max_idle_time": "60s",
-  "max_packet_size": 1500,
-  "disable_sni": false,
   "fallback_for_invalid_sni": {
     "enabled": true,
     "address": "www.bing.com",
@@ -82,14 +77,15 @@ cat > "$CONFIG_DIR/config.json" <<EOF
 }
 EOF
 
-log "配置 systemd 服务..."
+# ---------- systemd ----------
+log "创建 systemd 服务..."
 cat > /etc/systemd/system/tuic.service <<EOF
 [Unit]
-Description=TUIC QUIC Secure Proxy Server
+Description=TUIC v5 Server
 After=network.target
 
 [Service]
-ExecStart=$BIN_PATH -c $CONFIG_DIR/config.json
+ExecStart=$BIN_LINK -c $CFG_DIR/config.json
 Restart=on-failure
 LimitNOFILE=65536
 
@@ -98,35 +94,26 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-systemctl enable tuic
-systemctl restart tuic
-sleep 2
+systemctl enable --now tuic
 
-if systemctl is-active --quiet tuic; then
-  log "TUIC 启动成功 ✅"
-else
-  err "TUIC 启动失败 ❌"
-  journalctl -u tuic -n 20 --no-pager
-  exit 1
-fi
+systemctl is-active --quiet tuic || err "TUIC 启动失败，使用 'journalctl -u tuic -n 50' 查看日志"
 
-log "开启防火墙端口..."
-ufw allow "$PORT/udp"
+# ---------- 防火墙 ----------
+log "放行端口并启用 UFW..."
+ufw allow "${PORT}/udp"
 ufw allow ssh
 ufw --force enable
 
-log "获取外网 IP..."
+# ---------- 输出信息 ----------
 IP=$(curl -s https://api.ipify.org)
+ENCODE=$(echo -n "${UUID}:${PSK}" | base64 -w 0)
+LINK="tuic://${ENCODE}@${IP}:${PORT}?alpn=h3&congestion_control=bbr&sni=${SERVER_NAME}&udp_relay_mode=native&allow_insecure=1#tuic_v5"
 
-log "生成 TUIC 配置链接（用于客户端）"
-BASE64_CRED=$(echo -n "$UUID:$PSK" | base64 -w 0)
-TUIC_LINK="tuic://${BASE64_CRED}@${IP}:${PORT}?alpn=h3&congestion_control=bbr&sni=${SERVER_NAME}&udp_relay_mode=native&allow_insecure=1#tuic_v5"
-
-echo -e "\n${GREEN}✅ TUIC v5 安装完成！配置如下：${NC}"
-echo -e "${GREEN}地址: ${NC}${IP}"
-echo -e "${GREEN}端口: ${NC}${PORT}"
-echo -e "${GREEN}UUID : ${NC}${UUID}"
-echo -e "${GREEN}PSK  : ${NC}${PSK}"
-echo -e "${GREEN}链接 : ${NC}${TUIC_LINK}"
+echo -e "\n${GREEN}✅ TUIC v5 已部署完成${NC}"
+echo -e "${GREEN}地址:${NC} $IP"
+echo -e "${GREEN}端口:${NC} $PORT"
+echo -e "${GREEN}UUID:${NC} $UUID"
+echo -e "${GREEN}PSK :${NC} $PSK"
+echo -e "${GREEN}Link:${NC} $LINK"
 echo -e "\n${GREEN}二维码:${NC}"
-echo "$TUIC_LINK" | qrencode -o - -t ANSIUTF8
+echo "$LINK" | qrencode -o - -t ANSIUTF8
