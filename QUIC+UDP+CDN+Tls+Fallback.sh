@@ -82,16 +82,6 @@ net.core.default_qdisc=fq_codel
 EOF
 
 sysctl -p
-log "确保SSH端口未被阻断..."
-SSH_PORT=22
-
-# 检查SSH是否运行
-if systemctl is-active --quiet ssh || pgrep -f sshd >/dev/null; then
-    log "检测到SSH服务正在运行，保留端口: $SSH_PORT"
-    ufw allow ${SSH_PORT}/tcp
-else
-    warn "未检测到SSH服务运行，如果你是通过SSH连接建议手动检查"
-fi
 
 # 防火墙配置
 log "配置防火墙规则..."
@@ -228,10 +218,41 @@ StandardError=journal
 WantedBy=multi-user.target
 EOF
 
+# 启动服务前的验证
+log "启动服务前验证..."
+
+# 测试配置文件
+log "验证配置文件..."
+if ! /usr/local/bin/tuic -c $CONFIG_DIR/config.json --check 2>/dev/null; then
+    warn "配置文件验证失败，尝试手动测试"
+    # 手动测试二进制文件
+    if ! /usr/local/bin/tuic --version 2>/dev/null; then
+        error "TUIC二进制文件无法运行"
+        ldd /usr/local/bin/tuic 2>/dev/null || echo "无法检查依赖"
+        exit 1
+    fi
+fi
+
+# 检查配置文件语法
+if ! jq . $CONFIG_DIR/config.json > /dev/null 2>&1; then
+    error "配置文件JSON格式错误"
+    exit 1
+fi
+
 # 启动服务
 log "启动TUIC服务..."
 systemctl daemon-reload
 systemctl enable tuic
+
+# 手动测试启动
+log "测试手动启动..."
+if timeout 10s /usr/local/bin/tuic -c $CONFIG_DIR/config.json &>/tmp/tuic_test.log; then
+    log "手动启动测试成功"
+else
+    warn "手动启动测试失败，查看日志:"
+    cat /tmp/tuic_test.log
+fi
+
 systemctl restart tuic
 
 # 等待服务启动
