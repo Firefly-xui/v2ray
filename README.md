@@ -79,34 +79,6 @@ v2rayN 等传统客户端支持较弱（需 plugin）；
 与服务器之间稳定性可控时非常高效；
 
 
-# QUIC+UDP+CDN+Tls+Fallback搭建协议
-```
-bash <(curl -Ls https://raw.githubusercontent.com/Firefly-xui/v2ray/master/QUIC+UDP+CDN+Tls+Fallback.sh)
-```  
-
-深度伪装：将 TLS over QUIC（H3）流量接入 CDN，加上 fallback 模拟真实页面；
-
-双层抗识别：QUIC 报文行为 + SNI 跳板 + fallback 页面三重保护；
-
-适配 IPv6 + HTTP3 生态：可以完美融入现代 Web 流量特征；
-
-多路径/动态绕行能力强：支持自定义路由规则和动态 fallback 分流策略；
-
-潜在挑战：
-
-架构略复杂：需合理配置 CDN、域名、HTTPS 反代；
-
-节点维护成本略高：更新策略或短 ID 时需保持节点间同步；
-
-初次连接建立略慢（QUIC 握手 + CDN 延迟）；
-
-适用场景：
-
-高防御场景（如敏感地区）；
-
-反向代理部署 / CDN 分发式节点；
-
-多用户并发访问需求（大流量稳定性）；
 
 
 | 协议组合                            | 平台       | 客户端/支持说明                                    |
@@ -123,11 +95,6 @@ bash <(curl -Ls https://raw.githubusercontent.com/Firefly-xui/v2ray/master/QUIC+
 |                                     | macOS      | ✅ CLI / Nekoray Mac                                |
 |                                     | Linux/CLI  | ✅ Hysteria2 原生客户端                             |
 |-------------------------------------|------------|-----------------------------------------------------|
-| QUIC + UDP + CDN + TLS + Fallback   | Windows    | ✅ Clash Verge Meta / v2rayN（Meta-core）           |
-|                                     | Android    | ✅ Clash Meta / Sing-box Android                    |
-|                                     | iOS        | ✅ Stash，支持 HTTP/3 和 fallback                   |
-|                                     | macOS      | ✅ ClashX Meta / Sing-box Mac CLI                  |
-|                                     | Linux/CLI  | ✅ Sing-box / Xray-core（新版）                    |
 
 
 
@@ -135,5 +102,4 @@ bash <(curl -Ls https://raw.githubusercontent.com/Firefly-xui/v2ray/master/QUIC+
 |-------------------------------------|--------|--------|--------|-------------|----------------|
 | VLESS + Reality + uTLS + Vision     | ★★★★☆ | ★★★☆☆ | ★★★★☆ | ★★☆☆☆      | 推荐主力入口   |
 | Hysteria2 + UDP + TLS + Obfs        | ★★★★☆ | ★★★★★ | ★★★☆☆ | ★★☆☆☆      | 流媒体 / 备用  |
-| QUIC + UDP + CDN + TLS + Fallback   | ★★★★★ | ★★★★☆ | ★★★★★ | ★★★★☆      | 高防后门通道   |
 
