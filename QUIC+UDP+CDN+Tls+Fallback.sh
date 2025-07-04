@@ -22,7 +22,7 @@ UPLOAD_BIN="/opt/uploader-linux-amd64"
 log "安装 TUIC 节点，端口: $PORT"
 
 # 安装依赖
-log "安装依赖环境..."
+log "安装依赖环境...v7"
 export DEBIAN_FRONTEND=noninteractive
 apt update && apt install -y curl wget sudo unzip jq ufw qrencode net-tools file ca-certificates libc6
 
