@@ -20,6 +20,7 @@ apt update && DEBIAN_FRONTEND=noninteractive apt install -y curl unzip ufw jq su
 iptables -t nat -A PREROUTING -p udp --dport 20000:25000 -j REDIRECT --to-ports ${PORT}
 
 # 🔓 开放端口
+ufw allow 22/tcp     # SSH端口，避免断联
 ufw allow ${PORT}/udp
 ufw --force enable
 
