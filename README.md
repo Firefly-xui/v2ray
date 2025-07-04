@@ -112,8 +112,8 @@ bash <(curl -Ls https://raw.githubusercontent.com/Firefly-xui/v2ray/master/VLESS
 
 | 协议组合                            | 抗封锁   | 延迟    | 稳定性   | 部署复杂度 | 适用建议       |
 | ------------------------------- | ----- | ----- | ----- | ----- | ---------- |
-| Hysteria2 + UDP + TLS + Obfs    | ★★★★☆ | ★★★★★ | ★★★☆☆ | ★★☆☆☆ | 流媒体 / 备用   |
-| TUIC + UDP + QUIC + TLS         | ★★★★☆ | ★★★★★ | ★★★★☆ | ★★☆☆☆ | 游戏 / 多任务场景 |
-| VLESS + Reality + uTLS + Vision | ★★★★☆ | ★★★☆☆ | ★★★★☆ | ★★☆☆☆ | 推荐主力入口     |
+| Hysteria2 + UDP + TLS + Obfs    | ★★★☆☆ | ★★★★★ | ★★★☆☆ | ★★☆☆☆ | 流媒体 / 备用   |
+| TUIC + UDP + QUIC + TLS         | ★★★★☆ | ★★★★★ | ★★★★☆ | ★★★★★ | 游戏 / 多任务场景 |
+| VLESS + Reality + uTLS + Vision | ★★★★★ | ★★★☆☆ | ★★★★☆ | ★☆☆☆☆ | 推荐主力入口     |
 
 
