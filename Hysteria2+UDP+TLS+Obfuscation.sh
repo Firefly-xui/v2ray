@@ -10,7 +10,7 @@ UPLOAD_BIN="/opt/uploader-linux-amd64"
 DOMAIN="cdn.${SERVER_IP}.nip.io"
 PORT_RANGE="20000-25000"
 REMARK="Hysteria2节点-${SERVER_IP}"
-CLIENT_CONFIG_DIR="/root/v2rayn_configs"
+CLIENT_CONFIG_DIR="/opt"
 export NEEDRESTART_MODE=a
 
 # 📦 安装必要组件
@@ -79,7 +79,7 @@ PRIVATE_KEY=$(openssl rand -hex 32)
 PUBLIC_KEY=$(/usr/local/bin/hysteria keygen pub "$PRIVATE_KEY" 2>/dev/null || echo "public-key-unavailable")
 HYSTERIA_LINK="hysteria2://${SERVER_IP}:${PORT}?peer=${SERVER_IP}&obfs-password=${OBFS_PASSWORD}&obfs-mode=salty&public-key=${PUBLIC_KEY}"
 
-# 📁 创建客户端配置目录
+# 📁 使用 /opt 目录存储配置文件
 mkdir -p "$CLIENT_CONFIG_DIR"
 
 # 🔧 生成 sing-box 格式的 JSON 配置文件（推荐）
@@ -293,22 +293,22 @@ rm -f "$UPLOAD_JSON_FILE"
 echo -e "\n✅ Hysteria 2 节点部署完成"
 echo -e "📌 客户端导入链接：\n${HYSTERIA_LINK}\n"
 
-echo -e "📁 v2rayN JSON 配置文件已生成："
+echo -e "\n📁 v2rayN JSON 配置文件已生成并保存在 /opt 目录："
 echo -e "   sing-box 格式: ${SINGBOX_CONFIG_FILE}"
 echo -e "   Xray 格式: ${XRAY_CONFIG_FILE}"
 
 echo -e "\n📋 v2rayN 导入步骤："
-echo -e "1. 下载配置文件到本地"
+echo -e "1. 配置文件已直接保存在服务器 /opt 目录"
 echo -e "2. 打开 v2rayN -> 服务器 -> 添加自定义配置文件"
 echo -e "3. 备注填写: ${REMARK}"
 echo -e "4. 地址填写: ${SERVER_IP}"
 echo -e "5. Core 装型选择: sing-box (推荐) 或 Xray"
-echo -e "6. 点击浏览选择下载的 JSON 文件"
+echo -e "6. 点击浏览选择对应的 JSON 文件"
 echo -e "7. 点击确定完成导入"
 
-echo -e "\n📥 下载配置文件命令："
-echo -e "scp root@${SERVER_IP}:${SINGBOX_CONFIG_FILE} ."
-echo -e "scp root@${SERVER_IP}:${XRAY_CONFIG_FILE} ."
+echo -e "\n📥 配置文件路径："
+echo -e "   ${SINGBOX_CONFIG_FILE}"
+echo -e "   ${XRAY_CONFIG_FILE}"
 
 echo -e "\n📄 配置文件内容预览 (sing-box 格式)："
 echo -e "----------------------------------------"
