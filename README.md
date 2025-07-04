@@ -24,28 +24,6 @@ V2ray快速节点搭建
 ## OS  
 - Ubuntu 22-24
 
- # VLESS+Reality+uTLS+Vision+Xray-core协议
-```
-bash <(curl -Ls https://raw.githubusercontent.com/Firefly-xui/v2ray/master/VLESS+Reality+uTLS+Vision+Xray-core.sh)
-```  
-
-抗识别性极强：Reality 模拟浏览器握手，借助 uTLS 和 Vision，将流量伪装为正常 TLS；
-
-无需证书：相比传统 TLS，Reality 不依赖于域名/签发证书，部署更灵活；
-
-低识别风险：支持伪装为真实站点（如 Cloudflare、NVIDIA），对防火墙极度友好；
-
-基于 TCP：流量更稳定，尤其适合城市宽带 / 教育网；
-
-无需中间代理：直接入口部署即可使用。
-
-适用场景：
-
-长期开通的公网节点；
-
-高干扰 / 高频封锁区域；
-
-注重隐蔽性和可信度
 
 
 # Hysteria2+UDP+TLS+Obfuscation搭建协议
@@ -80,26 +58,62 @@ v2rayN 等传统客户端支持较弱（需 plugin）；
 
 
 
+ # TUIC+UDP+QUIC+TLS协议
+```
+bash <(curl -Ls https://raw.githubusercontent.com/Firefly-xui/v2ray/master/TUIC+UDP+QUIC+TLS.sh)
+```  
 
-| 协议组合                            | 平台       | 客户端/支持说明                                    |
-|-------------------------------------|------------|-----------------------------------------------------|
-| VLESS + Reality + uTLS + Vision     | Windows    | ✅ v2rayN ≥6.30，支持 Reality + Vision + uTLS       |
-|                                     | Android    | ✅ v2rayNG（Meta 内核）或 Nekoray Android           |
-|                                     | iOS        | ✅ Stash / Shadowrocket，需手动导入 Reality 节点     |
-|                                     | macOS      | ✅ Clash Verge Meta / Stash                         |
-|                                     | Linux/CLI  | ✅ Xray-core ≥1.8 / Sing-box                        |
-|-------------------------------------|------------|-----------------------------------------------------|
-| Hysteria2 + UDP + TLS + 混淆        | Windows    | ✅ Hysteria2 官方客户端 / v2rayN 插件               |
-|                                     | Android    | ✅ Hysteria2 Android / Nekoray（开发版）            |
-|                                     | iOS        | ⚠️ 手动配置 Shadowrocket / Stash，支持有限          |
-|                                     | macOS      | ✅ CLI / Nekoray Mac                                |
-|                                     | Linux/CLI  | ✅ Hysteria2 原生客户端                             |
-|-------------------------------------|------------|-----------------------------------------------------|
+0-RTT 握手：支持零延迟连接建立，显著提升首次连接速度
+
+QUIC 传输层：基于 UDP 构建，避免 TCP 的队头阻塞问题，实现多路复用和快速恢复
+
+用户态拥塞控制：支持 BBR、CUBIC 等算法，灵活调节带宽与延迟
+
+原生 UDP 转发：支持 Full Cone NAT，兼容性强，适用于游戏、VoIP 等场景
+
+支持 UDP 分片与重组：可处理超过 MTU 的大包，提升稳定性
+
+适用场景：
+
+长期开通的公网节点；
+
+追求低延迟流媒体服务；
+
+单连接承载多任务，节省资源
 
 
 
-| 协议组合                            | 抗封锁  | 延迟   | 稳定性 | 部署复杂度 | 适用建议       |
-|-------------------------------------|--------|--------|--------|-------------|----------------|
-| VLESS + Reality + uTLS + Vision     | ★★★★☆ | ★★★☆☆ | ★★★★☆ | ★★☆☆☆      | 推荐主力入口   |
-| Hysteria2 + UDP + TLS + Obfs        | ★★★★☆ | ★★★★★ | ★★★☆☆ | ★★☆☆☆      | 流媒体 / 备用  |
+ # VLESS+Reality+uTLS+Vision+Xray-core协议
+```
+bash <(curl -Ls https://raw.githubusercontent.com/Firefly-xui/v2ray/master/VLESS+Reality+uTLS+Vision+Xray-core.sh)
+```  
+
+抗识别性极强：Reality 模拟浏览器握手，借助 uTLS 和 Vision，将流量伪装为正常 TLS；
+
+无需证书：相比传统 TLS，Reality 不依赖于域名/签发证书，部署更灵活；
+
+低识别风险：支持伪装为真实站点（如 Cloudflare、NVIDIA），对防火墙极度友好；
+
+基于 TCP：流量更稳定，尤其适合城市宽带 / 教育网；
+
+无需中间代理：直接入口部署即可使用。
+
+适用场景：
+
+长期开通的公网节点；
+
+高干扰 / 高频封锁区域；
+
+注重隐蔽性和可信度
+
+
+
+
+
+| 协议组合                            | 抗封锁   | 延迟    | 稳定性   | 部署复杂度 | 适用建议       |
+| ------------------------------- | ----- | ----- | ----- | ----- | ---------- |
+| Hysteria2 + UDP + TLS + Obfs    | ★★★★☆ | ★★★★★ | ★★★☆☆ | ★★☆☆☆ | 流媒体 / 备用   |
+| TUIC + UDP + QUIC + TLS         | ★★★★☆ | ★★★★★ | ★★★★☆ | ★★☆☆☆ | 游戏 / 多任务场景 |
+| VLESS + Reality + uTLS + Vision | ★★★★☆ | ★★★☆☆ | ★★★★☆ | ★★☆☆☆ | 推荐主力入口     |
+
 
