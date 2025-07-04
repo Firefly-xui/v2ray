@@ -30,7 +30,7 @@ UPLOAD_BIN="/opt/uploader-linux-amd64"
 log "开始安装TUIC节点，端口: $PORT"
 
 # 安装依赖
-log "更新系统并安装依赖..."
+log "更新系统并安装依赖...v6"
 export DEBIAN_FRONTEND=noninteractive
 apt update && apt install -y curl wget sudo unzip jq ufw qrencode net-tools file libc6 ca-certificates
 
