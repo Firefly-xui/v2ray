@@ -1,14 +1,19 @@
 #!/bin/bash
 set -e
 
-PORT=$((RANDOM % 7001 + 2000))
+PORT=2855
 SERVER_IP=$(curl -s https://api.ipify.org)
-OBFS_PASSWORD=$(openssl rand -hex 8)
+OBFS_PASSWORD=""
 CONFIG_DIR="/etc/hysteria"
 UPLOAD_BIN="/opt/uploader-linux-amd64"
+REMARK="122512"
+PASSWORD="b93a8263c7c971ac"
+
+# 自动跳过 needrestart 的交互提示
+export NEEDRESTART_MODE=a
 
 # 安装必要组件
-apt update && apt install -y curl unzip ufw jq sudo
+apt update && apt install -y curl unzip ufw jq sudo needrestart
 
 # 开放 UDP 端口
 ufw allow ${PORT}/udp
@@ -69,24 +74,24 @@ systemctl restart hysteria
 # 构建客户端导入链接
 HYSTERIA_LINK="hysteria2://${SERVER_IP}:${PORT}?peer=${SERVER_IP}&obfs-password=${OBFS_PASSWORD}&obfs-mode=salty&public-key=${PUBLIC_KEY}"
 
-# 显示部署结果和客户端配置
+# 输出部署结果与 v2rayN 配置
 echo -e "\n✅ Hysteria 2 节点部署完成！"
 echo -e "📌 客户端导入链接：\n${HYSTERIA_LINK}\n"
-echo -e "📁 V2RayN 客户端配置 YAML 示例："
+echo -e "📁 V2RayN 客户端配置 JSON："
 cat << EOF
-server: ${SERVER_IP}
-port: ${PORT}
-obfs:
-  password: "${OBFS_PASSWORD}"
-  mode: salty
-tls:
-  alpn:
-    - h3
-  sni: www.cloudflare.com
-auth:
-  type: disabled
-protocol: udp
-public-key: "${PUBLIC_KEY}"
+{
+  "remarks": "${REMARK}",
+  "address": "${SERVER_IP}",
+  "port": ${PORT},
+  "password": "${PASSWORD}",
+  "obfs-password": "${OBFS_PASSWORD}",
+  "port-range": "1000:2000,3000:4000",
+  "tls": "tls",
+  "sni": "",
+  "fingerprint": "",
+  "alpn": "",
+  "allowInsecure": false
+}
 EOF
 
 # 上传 JSON 数据（静默处理）
